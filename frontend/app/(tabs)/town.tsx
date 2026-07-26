@@ -12,11 +12,14 @@ import WelcomeBackModal from "@/src/components/WelcomeBackModal";
 import CelebrationModal from "@/src/components/CelebrationModal";
 import ProgressBar from "@/src/components/ProgressBar";
 import {
+  buildingLevel,
   canFulfill,
   formatDuration,
   jobProgress,
   jobRemainingMs,
+  machineSlots,
   readyScrap,
+  scrapCapacity,
   scrapProgress,
 } from "@/src/game/engine";
 
@@ -45,6 +48,11 @@ export default function TownScreen() {
   const sy = state.buildings.scrap_yard;
   const ms = state.buildings.machine_shop;
   const scrapReady = readyScrap(sy, config, now);
+  const scrapCap = scrapCapacity(sy, config);
+  const slots = machineSlots(ms, config);
+  const soonestJob = ms.jobs.length
+    ? ms.jobs.reduce((a, b) => (jobRemainingMs(a, now) <= jobRemainingMs(b, now) ? a : b))
+    : null;
   const readyContracts = state.contracts.filter((c) => canFulfill(state, c)).length;
 
   return (
@@ -72,15 +80,15 @@ export default function TownScreen() {
           testID="card-scrap-yard"
           icon="dump-truck"
           title="Scrap Yard"
-          level={sy.level}
+          level={buildingLevel(sy)}
           gradient={["#6E6459", "#4A443C"]}
           onPress={() => setSheet("scrap_yard")}
           badge={scrapReady > 0 ? `${scrapReady}` : undefined}
         >
           <Text style={styles.cardStatus}>
-            {scrapReady > 0 ? `${scrapReady} scrap ready to collect` : "Mining scrap…"}
+            {scrapReady >= scrapCap ? `Storage full · ${scrapReady}/${scrapCap}` : scrapReady > 0 ? `${scrapReady}/${scrapCap} scrap ready` : "Mining scrap…"}
           </Text>
-          <ProgressBar progress={scrapProgress(sy, config, now)} height={10} color={COLORS.brandTertiary} />
+          <ProgressBar progress={scrapProgress(sy, config, now)} height={10} color={scrapReady >= scrapCap ? COLORS.warning : COLORS.brandTertiary} />
         </BuildingCard>
 
         {/* Machine Shop */}
@@ -88,19 +96,20 @@ export default function TownScreen() {
           testID="card-machine-shop"
           icon="factory"
           title="Machine Shop"
-          level={ms.level}
+          level={buildingLevel(ms)}
           gradient={["#8A4B2E", "#5E3115"]}
           onPress={() => setSheet("machine_shop")}
+          badge={ms.jobs.length > 0 ? `${ms.jobs.length}/${slots}` : undefined}
         >
-          {ms.job ? (
+          {soonestJob ? (
             <>
               <Text style={styles.cardStatus}>
-                Producing {ms.job.type === "component" ? "Component" : "Finished Good"} · {formatDuration(jobRemainingMs(ms, now))}
+                {ms.jobs.length}/{slots} slots working · {formatDuration(jobRemainingMs(soonestJob, now))} left
               </Text>
-              <ProgressBar progress={jobProgress(ms, now)} height={10} color={COLORS.brandTertiary} />
+              <ProgressBar progress={jobProgress(soonestJob, now)} height={10} color={COLORS.brandTertiary} />
             </>
           ) : (
-            <Text style={styles.cardStatus}>Idle — tap to start a job</Text>
+            <Text style={styles.cardStatus}>{slots} slot{slots > 1 ? "s" : ""} idle — tap to start a job</Text>
           )}
         </BuildingCard>
 

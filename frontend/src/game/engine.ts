@@ -1,5 +1,6 @@
 import { GameConfig } from "./config";
 import {
+  BuildingKey,
   Contract,
   ContractReq,
   GameState,
@@ -8,71 +9,105 @@ import {
   MaterialKey,
   OfflineSummary,
   ScrapYardState,
+  ShippingDepotState,
+  TrackKey,
 } from "./types";
 
-const MATERIALS: MaterialKey[] = ["scrap", "components", "finished_goods"];
-
 export function genId(): string {
-  return (
-    Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
-  );
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
-// ---- speed / cost curves ----
-export function speedMult(level: number, cfg: GameConfig): number {
-  return Math.pow(cfg.upgrade.speed_factor, level - 1);
+// ---- upgrade track helpers (fully config-driven) ----
+export function trackDef(cfg: GameConfig, building: BuildingKey, track: TrackKey): any {
+  return (cfg.upgrades as any)[building][track];
 }
 
-export function upgradeCost(level: number, cfg: GameConfig): number {
-  return Math.round(cfg.upgrade.cost_base * Math.pow(cfg.upgrade.cost_growth, level - 1));
+export function trackCost(cfg: GameConfig, building: BuildingKey, track: TrackKey, level: number): number {
+  const t = trackDef(cfg, building, track);
+  return Math.round(t.cost_base * Math.pow(t.cost_growth, level - 1));
 }
 
-export function isMaxLevel(level: number, cfg: GameConfig): boolean {
-  return level >= cfg.upgrade.max_level;
+export function trackMaxed(cfg: GameConfig, building: BuildingKey, track: TrackKey, level: number): boolean {
+  return level >= trackDef(cfg, building, track).max_level;
+}
+
+// rough building level for the card badge: sum of track progress
+export function buildingLevel(building: { upgrades: Record<string, number> }): number {
+  return Object.values(building.upgrades).reduce((a, b) => a + (b - 1), 0) + 1;
 }
 
 // ---- scrap yard ----
-export function scrapIntervalMs(sy: ScrapYardState, cfg: GameConfig): number {
-  return cfg.scrap_yard.base_interval * 1000 * speedMult(sy.level, cfg);
+export function scrapIntervalSec(cfg: GameConfig, speedLevel: number): number {
+  const f = cfg.upgrades.scrap_yard.speed.factor;
+  return cfg.scrap_yard.base_interval * Math.pow(f, speedLevel - 1);
 }
-
+export function scrapIntervalMs(sy: ScrapYardState, cfg: GameConfig): number {
+  return scrapIntervalSec(cfg, sy.upgrades.speed) * 1000;
+}
+export function scrapCapacityForLevel(cfg: GameConfig, storageLevel: number): number {
+  const s = cfg.upgrades.scrap_yard.storage;
+  return s.base_capacity + s.per_level * (storageLevel - 1);
+}
+export function scrapCapacity(sy: ScrapYardState, cfg: GameConfig): number {
+  return scrapCapacityForLevel(cfg, sy.upgrades.storage);
+}
 export function readyScrap(sy: ScrapYardState, cfg: GameConfig, now: number): number {
   const interval = scrapIntervalMs(sy, cfg);
-  return Math.max(0, Math.floor((now - sy.baseline_ts) / interval)) * cfg.scrap_yard.produce;
+  const raw = Math.max(0, Math.floor((now - sy.baseline_ts) / interval)) * cfg.scrap_yard.produce;
+  return Math.min(raw, scrapCapacity(sy, cfg));
 }
-
 export function scrapProgress(sy: ScrapYardState, cfg: GameConfig, now: number): number {
+  if (readyScrap(sy, cfg, now) >= scrapCapacity(sy, cfg)) return 1;
   const interval = scrapIntervalMs(sy, cfg);
   const frac = ((now - sy.baseline_ts) % interval) / interval;
   return Math.min(1, Math.max(0, frac));
 }
 
 // ---- machine shop ----
-export function jobDurationMs(type: JobType, level: number, cfg: GameConfig): number {
-  const base = cfg.machine_shop[type].base_duration;
-  return base * 1000 * speedMult(level, cfg);
+export function jobDurationSec(cfg: GameConfig, type: JobType, speedLevel: number): number {
+  const f = cfg.upgrades.machine_shop.speed.factor;
+  return cfg.machine_shop[type].base_duration * Math.pow(f, speedLevel - 1);
+}
+export function jobDurationMs(cfg: GameConfig, type: JobType, ms: MachineShopState): number {
+  return jobDurationSec(cfg, type, ms.upgrades.speed) * 1000;
+}
+export function machineSlots(ms: MachineShopState, cfg: GameConfig): number {
+  return Math.min(ms.upgrades.slots, cfg.upgrades.machine_shop.slots.max_level);
+}
+export function jobProgress(job: { start_ts: number; duration_ms: number }, now: number): number {
+  return Math.min(1, Math.max(0, (now - job.start_ts) / job.duration_ms));
+}
+export function jobRemainingMs(job: { start_ts: number; duration_ms: number }, now: number): number {
+  return Math.max(0, job.start_ts + job.duration_ms - now);
 }
 
-export function jobProgress(ms: MachineShopState, now: number): number {
-  if (!ms.job) return 0;
-  const elapsed = now - ms.job.start_ts;
-  return Math.min(1, Math.max(0, elapsed / ms.job.duration_ms));
+// ---- shipping depot ----
+export function depotCoinXpMult(depot: ShippingDepotState, cfg: GameConfig): number {
+  const t = cfg.upgrades.shipping_depot.rewards;
+  return 1 + t.mult_per_level * (depot.upgrades.rewards - 1);
 }
-
-export function jobRemainingMs(ms: MachineShopState, now: number): number {
-  if (!ms.job) return 0;
-  return Math.max(0, ms.job.start_ts + ms.job.duration_ms - now);
+export function depotRewardPct(cfg: GameConfig, level: number): number {
+  return Math.round(cfg.upgrades.shipping_depot.rewards.mult_per_level * (level - 1) * 100);
 }
-
-export function jobIsDone(ms: MachineShopState, now: number): boolean {
-  return !!ms.job && now >= ms.job.start_ts + ms.job.duration_ms;
+export function depotRestorationBonus(depot: ShippingDepotState, cfg: GameConfig): number {
+  return cfg.upgrades.shipping_depot.quality.restoration_per_level * (depot.upgrades.quality - 1);
+}
+export function depotQualityTierBonus(depot: ShippingDepotState, cfg: GameConfig): number {
+  return cfg.upgrades.shipping_depot.quality.tier_per_level * (depot.upgrades.quality - 1);
+}
+export function effectiveReward(contract: Contract, depot: ShippingDepotState, cfg: GameConfig) {
+  const m = depotCoinXpMult(depot, cfg);
+  return {
+    coins: Math.round(contract.reward_coins * m),
+    xp: Math.round(contract.reward_xp * m),
+    restoration: contract.reward_restoration + depotRestorationBonus(depot, cfg),
+  };
 }
 
 // ---- xp / level ----
 export function xpForLevel(level: number, cfg: GameConfig): number {
   return cfg.xp_base * level;
 }
-
 export function grantXp(state: GameState, amount: number, cfg: GameConfig): number {
   let levelsGained = 0;
   state.xp += amount;
@@ -85,9 +120,9 @@ export function grantXp(state: GameState, amount: number, cfg: GameConfig): numb
 }
 
 // ---- contracts ----
-export function generateContract(playerLevel: number, cfg: GameConfig): Contract {
+export function generateContract(playerLevel: number, cfg: GameConfig, qualityTierBonus = 0): Contract {
   const cc = cfg.contracts;
-  const tier = Math.min(playerLevel, 6);
+  const tier = Math.min(playerLevel, 6) + qualityTierBonus;
   const numReqs = 1 + Math.floor(Math.random() * Math.min(cc.max_requirements, 1 + Math.floor(tier / 2)));
   const pool: MaterialKey[] = ["scrap"];
   if (playerLevel >= cc.material_unlock.components) pool.push("components");
@@ -109,25 +144,12 @@ export function generateContract(playerLevel: number, cfg: GameConfig): Contract
   const reward_coins = Math.round(value * (cc.reward_coin_base + Math.random() * cc.reward_coin_var));
   const reward_xp = Math.round(value * (cc.reward_xp_base + Math.random() * cc.reward_xp_var));
   const reward_restoration = cc.restoration_min + Math.floor(Math.random() * cc.restoration_span);
-  return {
-    id: genId(),
-    title: pickTitle(),
-    requirements,
-    reward_coins,
-    reward_xp,
-    reward_restoration,
-  };
+  return { id: genId(), title: pickTitle(), requirements, reward_coins, reward_xp, reward_restoration };
 }
 
 const TITLES = [
-  "City Repair Crew",
-  "Old Mill Refit",
-  "Bridge Rebuild",
-  "Rail Yard Order",
-  "Harbor Supply",
-  "School Restoration",
-  "Fire Station Job",
-  "Water Works",
+  "City Repair Crew", "Old Mill Refit", "Bridge Rebuild", "Rail Yard Order",
+  "Harbor Supply", "School Restoration", "Fire Station Job", "Water Works",
 ];
 function pickTitle(): string {
   return TITLES[Math.floor(Math.random() * TITLES.length)];
@@ -137,7 +159,7 @@ export function canFulfill(state: GameState, contract: Contract): boolean {
   return contract.requirements.every((r) => state.resources[r.resource] >= r.qty);
 }
 
-// ---- state creation ----
+// ---- state creation & migration ----
 export function createDefaultState(now: number, cfg: GameConfig): GameState {
   return {
     resources: { scrap: 0, components: 0, finished_goods: 0, coins: 0 },
@@ -146,51 +168,79 @@ export function createDefaultState(now: number, cfg: GameConfig): GameState {
     restoration_points: 0,
     town_hall_restored: false,
     buildings: {
-      scrap_yard: { level: 1, baseline_ts: now },
-      machine_shop: { level: 1, job: null },
+      scrap_yard: { baseline_ts: now, upgrades: { speed: 1, storage: 1 } },
+      machine_shop: { jobs: [], upgrades: { speed: 1, slots: 1 } },
+      shipping_depot: { upgrades: { rewards: 1, quality: 1 } },
     },
-    contracts: Array.from({ length: cfg.contracts.board_size }, () => generateContract(1, cfg)),
+    contracts: Array.from({ length: cfg.contracts.board_size }, () => generateContract(1, cfg, 0)),
     last_seen_ts: now,
     tutorial_seen: false,
   };
 }
 
-// Merge a persisted state with defaults so new fields never crash old saves.
+// Merge a persisted save with defaults so new fields never crash old saves.
+// Old single-`level` buildings and single `.job` migrate to Level-1 tracks.
 export function normalizeState(raw: any, now: number, cfg: GameConfig): GameState {
   const def = createDefaultState(now, cfg);
   if (!raw || typeof raw !== "object") return def;
+
+  const rawSy = raw.buildings?.scrap_yard || {};
+  const rawMs = raw.buildings?.machine_shop || {};
+  const rawSd = raw.buildings?.shipping_depot || {};
+
+  const legacyJobs = Array.isArray(rawMs.jobs) ? rawMs.jobs : rawMs.job ? [rawMs.job] : [];
+
   return {
     ...def,
     ...raw,
     resources: { ...def.resources, ...(raw.resources || {}) },
     buildings: {
-      scrap_yard: { ...def.buildings.scrap_yard, ...(raw.buildings?.scrap_yard || {}) },
-      machine_shop: { ...def.buildings.machine_shop, ...(raw.buildings?.machine_shop || {}) },
+      scrap_yard: {
+        baseline_ts: typeof rawSy.baseline_ts === "number" ? rawSy.baseline_ts : now,
+        upgrades: {
+          speed: rawSy.upgrades?.speed ?? rawSy.level ?? 1,
+          storage: rawSy.upgrades?.storage ?? 1,
+        },
+      },
+      machine_shop: {
+        jobs: legacyJobs,
+        upgrades: {
+          speed: rawMs.upgrades?.speed ?? rawMs.level ?? 1,
+          slots: rawMs.upgrades?.slots ?? 1,
+        },
+      },
+      shipping_depot: {
+        upgrades: {
+          rewards: rawSd.upgrades?.rewards ?? 1,
+          quality: rawSd.upgrades?.quality ?? 1,
+        },
+      },
     },
     contracts: Array.isArray(raw.contracts) && raw.contracts.length ? raw.contracts : def.contracts,
   };
 }
 
-// ---- machine shop tick: complete a finished job, return new state (or same) ----
+// ---- machine shop tick: complete all finished jobs ----
 export function tickMachineShop(state: GameState, cfg: GameConfig, now: number): GameState {
   const ms = state.buildings.machine_shop;
-  if (!ms.job || now < ms.job.start_ts + ms.job.duration_ms) return state;
-  const recipe = cfg.machine_shop[ms.job.type];
-  const next: GameState = {
-    ...state,
-    resources: {
-      ...state.resources,
-      [recipe.out]: (state.resources as any)[recipe.out] + recipe.out_qty,
-    },
-    buildings: {
-      ...state.buildings,
-      machine_shop: { ...ms, job: null },
-    },
-  };
-  return next;
+  if (!ms.jobs.length) return state;
+  const remaining = [] as typeof ms.jobs;
+  let changed = false;
+  const resources = { ...state.resources } as any;
+  for (const job of ms.jobs) {
+    if (now >= job.start_ts + job.duration_ms) {
+      const r = cfg.machine_shop[job.type];
+      resources[r.out] += r.out_qty;
+      changed = true;
+    } else {
+      remaining.push(job);
+    }
+  }
+  if (!changed) return state;
+  return { ...state, resources, buildings: { ...state.buildings, machine_shop: { ...ms, jobs: remaining } } };
 }
 
-// ---- offline production (uses UTC epoch ms; capped by config.offline_cap_seconds) ----
+// ---- offline production (UTC epoch ms; capped by config.offline_cap_seconds) ----
 export function computeOffline(
   state: GameState,
   cfg: GameConfig,
@@ -200,7 +250,6 @@ export function computeOffline(
   const next: GameState = JSON.parse(JSON.stringify(state));
 
   if (elapsed < cfg.min_offline_seconds * 1000) {
-    // brief absence: let the live tick handle any completed job, keep scrap pending
     return { state: tickMachineShop(next, cfg, now), summary: null };
   }
 
@@ -208,36 +257,34 @@ export function computeOffline(
   const capped = elapsed > cap;
   const effNow = state.last_seen_ts + Math.min(elapsed, cap);
 
-  const summary: OfflineSummary = {
-    away_ms: elapsed,
-    capped,
-    scrap_earned: 0,
-    jobs_completed: [],
-  };
+  const summary: OfflineSummary = { away_ms: elapsed, capped, scrap_earned: 0, jobs_completed: [] };
 
-  // Scrap yard: auto-collect all ready scrap up to the capped window.
+  // Scrap yard: auto-collect ready scrap (capped by storage) up to the window.
   const sy = next.buildings.scrap_yard;
-  const interval = scrapIntervalMs(sy, cfg);
-  const readyBefore = Math.max(0, Math.floor((state.last_seen_ts - sy.baseline_ts) / interval));
-  const readyAfter = Math.max(0, Math.floor((effNow - sy.baseline_ts) / interval));
-  const totalReady = readyAfter * cfg.scrap_yard.produce;
-  if (totalReady > 0) {
-    next.resources.scrap += totalReady;
-    summary.scrap_earned = Math.max(0, (readyAfter - readyBefore) * cfg.scrap_yard.produce);
+  const readyBefore = readyScrap(sy, cfg, state.last_seen_ts);
+  const readyAfter = readyScrap(sy, cfg, effNow);
+  if (readyAfter > 0) {
+    next.resources.scrap += readyAfter;
+    summary.scrap_earned = Math.max(0, readyAfter - readyBefore);
   }
-  sy.baseline_ts = now; // resume fresh accrual from real now
+  sy.baseline_ts = now;
 
-  // Machine shop: complete the running job if it finished within the window.
+  // Machine shop: complete every job finished within the window.
   const ms = next.buildings.machine_shop;
-  if (ms.job && effNow >= ms.job.start_ts + ms.job.duration_ms) {
-    const recipe = cfg.machine_shop[ms.job.type];
-    (next.resources as any)[recipe.out] += recipe.out_qty;
-    summary.jobs_completed.push({
-      building: "Machine Shop",
-      output: `${recipe.out_qty} ${recipe.out === "components" ? "Component" : "Finished Good"}`,
-    });
-    ms.job = null;
+  const remaining = [] as typeof ms.jobs;
+  for (const job of ms.jobs) {
+    if (effNow >= job.start_ts + job.duration_ms) {
+      const r = cfg.machine_shop[job.type];
+      (next.resources as any)[r.out] += r.out_qty;
+      summary.jobs_completed.push({
+        building: "Machine Shop",
+        output: `${r.out_qty} ${r.out === "components" ? "Component" : "Finished Good"}`,
+      });
+    } else {
+      remaining.push(job);
+    }
   }
+  ms.jobs = remaining;
 
   return { state: next, summary };
 }

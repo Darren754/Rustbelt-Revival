@@ -34,9 +34,22 @@ GAME_CONFIG: Dict[str, Any] = {
         "component": {"cost": {"scrap": 2}, "out": "components", "out_qty": 1, "base_duration": 20},
         "finished": {"cost": {"components": 2}, "out": "finished_goods", "out_qty": 1, "base_duration": 30},
     },
-    "upgrade": {"cost_base": 60, "cost_growth": 1.7, "speed_factor": 0.85, "max_level": 8},
     "xp_base": 100,
     "restoration_goal": 100,
+    "upgrades": {
+        "scrap_yard": {
+            "speed": {"max_level": 8, "cost_base": 60, "cost_growth": 1.7, "factor": 0.85},
+            "storage": {"max_level": 8, "cost_base": 80, "cost_growth": 1.8, "base_capacity": 20, "per_level": 15},
+        },
+        "machine_shop": {
+            "speed": {"max_level": 8, "cost_base": 75, "cost_growth": 1.7, "factor": 0.85},
+            "slots": {"max_level": 3, "cost_base": 600, "cost_growth": 3.0},
+        },
+        "shipping_depot": {
+            "rewards": {"max_level": 8, "cost_base": 120, "cost_growth": 1.8, "mult_per_level": 0.15},
+            "quality": {"max_level": 6, "cost_base": 180, "cost_growth": 2.0, "tier_per_level": 1, "restoration_per_level": 2},
+        },
+    },
     "contracts": {
         "board_size": 3,
         "max_requirements": 3,
@@ -47,6 +60,7 @@ GAME_CONFIG: Dict[str, Any] = {
         "reward_xp_base": 1.5, "reward_xp_var": 1,
         "restoration_min": 4, "restoration_span": 6,
     },
+    "dev": {"grant_coins_amount": 1000},
 }
 
 

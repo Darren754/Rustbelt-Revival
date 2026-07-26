@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 2: Multi-track upgrade system + dev tools + Shipping Depot building fully verified. Backend 10/10 pytest cases pass (config exposes upgrades.scrap_yard.speed/storage, machine_shop.speed/slots, shipping_depot.rewards/quality with cost_base/cost_growth/max_level + dev.grant_coins_amount=1000; save/load roundtrip preserves new state shape verbatim; legacy shape persists so client normalizeState can migrate). Frontend on 390x844 mobile viewport verified fresh boot -> Lv1 defaults render, dev-grant-coins-button adds 1000 coins each tap (3x=3000), scrap_yard.speed upgrade Lv1->Lv2 deducts exactly 60 coins (3000->2940) and updates 'Now/Next' benefit text, scrap_yard.storage upgrade Lv1->Lv2 works, machine_shop.slots upgrade Lv1->Lv2 renders machine-slot-1 alongside slot-0 and machine-slots shows '(0/2)', shipping_depot.rewards Lv1->Lv2 updates card to 'Now: +15% Coins & XP', shipping_depot.quality Lv1->Lv2 shows '+2 restoration' benefit, dev-reset-upgrades-button reverts all tracks to Lv1. Only non-blocking console warnings (shadow* / props.pointerEvents deprecations - carry-over from iteration 1).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["Carry-over from iteration 1: 'shadow*' style props deprecation and 'props.pointerEvents is deprecated' console warnings still present. Non-blocking."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Optional: silence deprecated shadow*/pointerEvents warnings by moving to boxShadow / style.pointerEvents."
+  ],
+  "critical_code_review_comments": [
+    "server.py GAME_CONFIG upgrades block matches frontend DEFAULT_CONFIG exactly (max_level/cost_base/cost_growth/factor/mult_per_level/tier_per_level). No drift.",
+    "engine.ts normalizeState correctly maps legacy rawSy.level -> upgrades.speed and legacy rawMs.job -> jobs[]. Defaults every missing track to 1 so old saves cannot crash.",
+    "upgradeTrack action guards coins & max_level, resets scrap_yard baseline_ts when speed is upgraded to prevent instant free scrap after faster interval.",
+    "machineSlots() clamps by config max_level; startJob() correctly checks jobs.length < slots so slots upgrade actually gates concurrency.",
+    "effectiveReward and depotQualityTierBonus wire the shipping_depot upgrades into contract payout & new-contract tier as documented.",
+    "All required testIDs present: upgrade-<building>-<track>, dev-grant-coins-button, dev-reset-upgrades-button, depot-upgrade-button, machine-slots, machine-slot-<i>, recipe-make-component, recipe-make-finished-good, collect-scrap-button, track-<building>-<track>."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py (rewritten for iteration 2: 10 tests incl. upgrades config schema, new-shape roundtrip, legacy shape persistence)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "TEST_player_upg_{ts} and TEST_player_upg_{ts}_legacy saves created via PUT and cleaned up in fixture teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 2 verified multi-track upgrade system, dev tools (grant coins + reset upgrades), Shipping Depot as a proper building with rewards/quality tracks, and legacy save migration. Key testIDs: upgrade-scrap_yard-speed/storage, upgrade-machine_shop-speed/slots, upgrade-shipping_depot-rewards/quality, track-<building>-<track> wraps 'Lv N' text for assertions, machine-slots (contains 'Production Slots (X/Y)'), machine-slot-<i>, depot-upgrade-button on contracts screen, dev-grant-coins-button and dev-reset-upgrades-button on hall-screen. Playwright note: sheet upgrade buttons live below viewport fold; use JS-dispatched click via page.evaluate + scrollIntoView instead of Playwright's page.click() which reports 'outside of viewport' inside the bottom sheet. Coin costs at Lv1: scrap_yard.speed=60, scrap_yard.storage=80, machine_shop.speed=75, machine_shop.slots=600, shipping_depot.rewards=120, shipping_depot.quality=180. Grant 1000 x 2 is enough to test all Lv1->Lv2 upgrades except slots (needs 3 grants).",
+  "rca_of_issue": "N/A - no bugs found."
+}

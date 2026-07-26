@@ -16,15 +16,23 @@ export interface MachineJob {
   duration_ms: number;
 }
 
+// Upgrade tracks — each starts at level 1.
 export interface ScrapYardState {
-  level: number;
   baseline_ts: number; // UTC epoch ms accrual anchor
+  upgrades: { speed: number; storage: number };
 }
 
 export interface MachineShopState {
-  level: number;
-  job: MachineJob | null;
+  jobs: MachineJob[]; // concurrent jobs limited by the "slots" track
+  upgrades: { speed: number; slots: number };
 }
+
+export interface ShippingDepotState {
+  upgrades: { rewards: number; quality: number };
+}
+
+export type BuildingKey = "scrap_yard" | "machine_shop" | "shipping_depot";
+export type TrackKey = "speed" | "storage" | "slots" | "rewards" | "quality";
 
 export interface ContractReq {
   resource: MaterialKey;
@@ -35,9 +43,9 @@ export interface Contract {
   id: string;
   title: string;
   requirements: ContractReq[];
-  reward_coins: number;
-  reward_xp: number;
-  reward_restoration: number;
+  reward_coins: number; // base — depot "rewards" track multiplies at fulfil
+  reward_xp: number; // base
+  reward_restoration: number; // base — depot "quality" track adds a bonus
 }
 
 export interface GameState {
@@ -49,6 +57,7 @@ export interface GameState {
   buildings: {
     scrap_yard: ScrapYardState;
     machine_shop: MachineShopState;
+    shipping_depot: ShippingDepotState;
   };
   contracts: Contract[];
   last_seen_ts: number; // UTC epoch ms

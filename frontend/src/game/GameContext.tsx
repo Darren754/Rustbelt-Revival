@@ -18,17 +18,19 @@ import {
   canFulfill,
   computeOffline,
   createDefaultState,
+  depotQualityTierBonus,
+  effectiveReward,
   generateContract,
   grantXp,
-  isMaxLevel,
   jobDurationMs,
+  machineSlots,
   normalizeState,
   readyScrap,
-  scrapIntervalMs,
   tickMachineShop,
-  upgradeCost,
+  trackCost,
+  trackMaxed,
 } from "./engine";
-import { Contract, GameState, JobType, OfflineSummary } from "./types";
+import { BuildingKey, GameState, JobType, OfflineSummary, TrackKey } from "./types";
 
 const PLAYER_ID_KEY = "rbr_player_id";
 const SAVE_KEY = "rbr_save_v1";
@@ -53,11 +55,13 @@ interface GameContextValue {
   clearOfflineSummary: () => void;
   collectScrap: () => void;
   startJob: (type: JobType) => void;
-  upgradeBuilding: (building: "scrap_yard" | "machine_shop") => void;
+  upgradeTrack: (building: BuildingKey, track: TrackKey) => void;
   fulfillContract: (id: string) => void;
   refreshContract: (id: string) => void;
   markTutorialSeen: () => void;
   resetGame: () => void;
+  grantCoins: (amount?: number) => void;
+  resetUpgrades: () => void;
   showToast: (msg: string) => void;
   playerId: string | null;
 }
@@ -89,9 +93,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   stateRef.current = state;
   playerIdRef.current = playerId;
 
-  const showToast = useCallback((msg: string) => {
-    setToast({ msg, key: Date.now() });
-  }, []);
+  const showToast = useCallback((msg: string) => setToast({ msg, key: Date.now() }), []);
 
   useEffect(() => {
     if (!toast) return;
@@ -118,17 +120,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const remote = await loadRemote(pid);
       const remoteRaw = remote?.state ?? null;
 
-      // pick the freshest save
       let chosen: any = null;
       const localTs = localRaw?.last_seen_ts ?? 0;
       const remoteTs = remoteRaw?.last_seen_ts ?? 0;
       if (localRaw && remoteRaw) chosen = localTs >= remoteTs ? localRaw : remoteRaw;
       else chosen = localRaw ?? remoteRaw;
 
-      let base: GameState;
-      if (chosen) base = normalizeState(chosen, nowTs, cfg);
-      else base = createDefaultState(nowTs, cfg);
-
+      const base = chosen ? normalizeState(chosen, nowTs, cfg) : createDefaultState(nowTs, cfg);
       const { state: afterOffline, summary } = computeOffline(base, cfg, nowTs);
       afterOffline.last_seen_ts = nowTs;
       setState(afterOffline);
@@ -155,7 +153,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(id);
   }, []);
 
-  // ---- persistence (local immediate, remote debounced) ----
+  // ---- persistence ----
   const persist = useCallback((s: GameState) => {
     const withSeen = { ...s, last_seen_ts: Date.now() };
     storage.setItem(SAVE_KEY, withSeen as any);
@@ -170,7 +168,6 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     if (!loading && state) persist(state);
   }, [state, loading, persist]);
 
-  // ---- save on background ----
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
       if (next === "background" || next === "inactive") {
@@ -198,15 +195,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         return prev;
       }
       haptic("success");
-      const interval = scrapIntervalMs(sy, cfg);
-      const consumed = Math.floor(ready / cfg.scrap_yard.produce) * interval;
       return {
         ...prev,
         resources: { ...prev.resources, scrap: prev.resources.scrap + ready },
-        buildings: {
-          ...prev.buildings,
-          scrap_yard: { ...sy, baseline_ts: sy.baseline_ts + consumed },
-        },
+        buildings: { ...prev.buildings, scrap_yard: { ...sy, baseline_ts: Date.now() } },
       };
     });
   }, [showToast]);
@@ -217,8 +209,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         if (!prev) return prev;
         const cfg = configRef.current;
         const ms = prev.buildings.machine_shop;
-        if (ms.job) {
-          showToast("Machine Shop is busy");
+        if (ms.jobs.length >= machineSlots(ms, cfg)) {
+          showToast("All production slots are busy");
           return prev;
         }
         const recipe = cfg.machine_shop[type];
@@ -239,11 +231,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             ...prev.buildings,
             machine_shop: {
               ...ms,
-              job: {
-                type,
-                start_ts: Date.now(),
-                duration_ms: jobDurationMs(type, ms.level, cfg),
-              },
+              jobs: [...ms.jobs, { type, start_ts: Date.now(), duration_ms: jobDurationMs(cfg, type, ms) }],
             },
           },
         };
@@ -252,34 +240,29 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [showToast]
   );
 
-  const upgradeBuilding = useCallback(
-    (building: "scrap_yard" | "machine_shop") => {
+  const upgradeTrack = useCallback(
+    (building: BuildingKey, track: TrackKey) => {
       setState((prev) => {
         if (!prev) return prev;
         const cfg = configRef.current;
-        const b = prev.buildings[building];
-        if (isMaxLevel(b.level, cfg)) {
+        const b: any = prev.buildings[building];
+        const level = b.upgrades[track];
+        if (trackMaxed(cfg, building, track, level)) {
           showToast("Already max level");
           return prev;
         }
-        const cost = upgradeCost(b.level, cfg);
+        const cost = trackCost(cfg, building, track, level);
         if (prev.resources.coins < cost) {
           showToast(`Need ${cost} Coins`);
           return prev;
         }
         haptic("success");
-        const nowTs = Date.now();
-        const buildings = { ...prev.buildings };
-        if (building === "scrap_yard") {
-          // reset accrual anchor so the faster interval applies cleanly
-          buildings.scrap_yard = { ...buildings.scrap_yard, level: b.level + 1, baseline_ts: nowTs };
-        } else {
-          buildings.machine_shop = { ...buildings.machine_shop, level: b.level + 1 };
-        }
+        const nb: any = { ...b, upgrades: { ...b.upgrades, [track]: level + 1 } };
+        if (building === "scrap_yard" && track === "speed") nb.baseline_ts = Date.now();
         return {
           ...prev,
           resources: { ...prev.resources, coins: prev.resources.coins - cost },
-          buildings,
+          buildings: { ...prev.buildings, [building]: nb },
         };
       });
     },
@@ -299,22 +282,21 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           return prev;
         }
         haptic("success");
+        const depot = prev.buildings.shipping_depot;
+        const reward = effectiveReward(contract, depot, cfg);
         const resources = { ...prev.resources } as any;
         contract.requirements.forEach((r) => (resources[r.resource] -= r.qty));
-        resources.coins += contract.reward_coins;
+        resources.coins += reward.coins;
 
         const next: GameState = {
           ...prev,
           resources,
           contracts: prev.contracts.map((c) =>
-            c.id === id ? generateContract(prev.level, cfg) : c
+            c.id === id ? generateContract(prev.level, cfg, depotQualityTierBonus(depot, cfg)) : c
           ),
-          restoration_points: Math.min(
-            cfg.restoration_goal,
-            prev.restoration_points + contract.reward_restoration
-          ),
+          restoration_points: Math.min(cfg.restoration_goal, prev.restoration_points + reward.restoration),
         };
-        const levels = grantXp(next, contract.reward_xp, cfg);
+        const levels = grantXp(next, reward.xp, cfg);
         if (levels > 0) {
           haptic("heavy");
           setLevelUpFlash(Date.now());
@@ -333,10 +315,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setState((prev) => {
       if (!prev) return prev;
       haptic("selection");
+      const cfg = configRef.current;
+      const depot = prev.buildings.shipping_depot;
       return {
         ...prev,
         contracts: prev.contracts.map((c) =>
-          c.id === id ? generateContract(prev.level, configRef.current) : c
+          c.id === id ? generateContract(prev.level, cfg, depotQualityTierBonus(depot, cfg)) : c
         ),
       };
     });
@@ -356,6 +340,35 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     showToast("New town started");
   }, [showToast]);
 
+  const grantCoins = useCallback(
+    (amount?: number) => {
+      setState((prev) => {
+        if (!prev) return prev;
+        const amt = amount ?? configRef.current.dev.grant_coins_amount;
+        haptic("success");
+        showToast(`+${amt} Coins granted`);
+        return { ...prev, resources: { ...prev.resources, coins: prev.resources.coins + amt } };
+      });
+    },
+    [showToast]
+  );
+
+  const resetUpgrades = useCallback(() => {
+    setState((prev) => {
+      if (!prev) return prev;
+      haptic("success");
+      showToast("Upgrades reset to Level 1");
+      return {
+        ...prev,
+        buildings: {
+          scrap_yard: { ...prev.buildings.scrap_yard, baseline_ts: Date.now(), upgrades: { speed: 1, storage: 1 } },
+          machine_shop: { ...prev.buildings.machine_shop, upgrades: { speed: 1, slots: 1 } },
+          shipping_depot: { upgrades: { rewards: 1, quality: 1 } },
+        },
+      };
+    });
+  }, [showToast]);
+
   const clearOfflineSummary = useCallback(() => {
     haptic("heavy");
     setOfflineSummary(null);
@@ -363,40 +376,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<GameContextValue>(
     () => ({
-      loading,
-      now,
-      config,
-      state,
-      offlineSummary,
-      levelUpFlash,
-      clearOfflineSummary,
-      collectScrap,
-      startJob,
-      upgradeBuilding,
-      fulfillContract,
-      refreshContract,
-      markTutorialSeen,
-      resetGame,
-      showToast,
-      playerId,
+      loading, now, config, state, offlineSummary, levelUpFlash,
+      clearOfflineSummary, collectScrap, startJob, upgradeTrack, fulfillContract,
+      refreshContract, markTutorialSeen, resetGame, grantCoins, resetUpgrades, showToast, playerId,
     }),
     [
-      loading,
-      now,
-      config,
-      state,
-      offlineSummary,
-      levelUpFlash,
-      clearOfflineSummary,
-      collectScrap,
-      startJob,
-      upgradeBuilding,
-      fulfillContract,
-      refreshContract,
-      markTutorialSeen,
-      resetGame,
-      showToast,
-      playerId,
+      loading, now, config, state, offlineSummary, levelUpFlash,
+      clearOfflineSummary, collectScrap, startJob, upgradeTrack, fulfillContract,
+      refreshContract, markTutorialSeen, resetGame, grantCoins, resetUpgrades, showToast, playerId,
     ]
   );
 
@@ -417,13 +404,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 }
 
 const styles = StyleSheet.create({
-  toastWrap: {
-    position: "absolute",
-    bottom: 110,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-  },
+  toastWrap: { position: "absolute", bottom: 110, left: 0, right: 0, alignItems: "center" },
   toast: {
     backgroundColor: COLORS.surfaceInverse,
     paddingVertical: SPACING.md,
@@ -432,10 +413,5 @@ const styles = StyleSheet.create({
     maxWidth: "88%",
     ...SHADOW.card,
   },
-  toastText: {
-    color: COLORS.onSurfaceInverse,
-    fontSize: FONT.base,
-    fontWeight: "700",
-    textAlign: "center",
-  },
+  toastText: { color: COLORS.onSurfaceInverse, fontSize: FONT.base, fontWeight: "700", textAlign: "center" },
 });

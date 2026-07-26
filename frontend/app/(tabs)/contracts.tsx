@@ -1,16 +1,18 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS, RADIUS, SPACING, FONT, SHADOW, RESOURCE_META } from "@/src/theme/theme";
 import { useGame } from "@/src/game/GameContext";
-import { canFulfill } from "@/src/game/engine";
+import { canFulfill, effectiveReward } from "@/src/game/engine";
 import { Contract } from "@/src/game/types";
+import BuildingSheet from "@/src/components/BuildingSheet";
 
 export default function ContractsScreen() {
   const insets = useSafeAreaInsets();
-  const { loading, state, fulfillContract, refreshContract } = useGame();
+  const { loading, state, config, fulfillContract, refreshContract } = useGame();
+  const [depotSheet, setDepotSheet] = useState(false);
 
   if (loading || !state) {
     return (
@@ -23,10 +25,14 @@ export default function ContractsScreen() {
   return (
     <View style={styles.container} testID="contracts-screen">
       <View style={[styles.header, { paddingTop: insets.top + SPACING.md }]}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Shipping Depot</Text>
           <Text style={styles.headerSub}>Fulfil orders for coins &amp; XP</Text>
         </View>
+        <Pressable style={styles.upgradePill} onPress={() => setDepotSheet(true)} testID="depot-upgrade-button">
+          <MaterialCommunityIcons name="arrow-up-bold-circle" size={18} color={COLORS.onBrandPrimary} />
+          <Text style={styles.upgradeText}>Upgrade</Text>
+        </Pressable>
         <View style={styles.coinPill}>
           <MaterialCommunityIcons name="cash-multiple" size={18} color={COLORS.brandTertiary} />
           <Text style={styles.coinText}>{Math.floor(state.resources.coins)}</Text>
@@ -38,6 +44,7 @@ export default function ContractsScreen() {
           <ContractCard
             key={c.id}
             contract={c}
+            reward={effectiveReward(c, state.buildings.shipping_depot, config)}
             fulfillable={canFulfill(state, c)}
             inventory={state.resources}
             onFulfill={() => fulfillContract(c.id)}
@@ -45,12 +52,15 @@ export default function ContractsScreen() {
           />
         ))}
       </ScrollView>
+
+      <BuildingSheet building={depotSheet ? "shipping_depot" : null} onClose={() => setDepotSheet(false)} />
     </View>
   );
 }
 
-function ContractCard({ contract, fulfillable, inventory, onFulfill, onRefresh }: {
+function ContractCard({ contract, reward, fulfillable, inventory, onFulfill, onRefresh }: {
   contract: Contract;
+  reward: { coins: number; xp: number; restoration: number };
   fulfillable: boolean;
   inventory: any;
   onFulfill: () => void;
@@ -85,9 +95,9 @@ function ContractCard({ contract, fulfillable, inventory, onFulfill, onRefresh }
       </View>
 
       <View style={styles.rewardRow}>
-        <Reward icon="cash-multiple" color={RESOURCE_META.coins.color} value={`+${contract.reward_coins}`} />
-        <Reward icon="star-four-points" color={COLORS.brandPrimary} value={`+${contract.reward_xp} XP`} />
-        <Reward icon="city-variant" color={COLORS.success} value={`+${contract.reward_restoration}`} />
+        <Reward icon="cash-multiple" color={RESOURCE_META.coins.color} value={`+${reward.coins}`} />
+        <Reward icon="star-four-points" color={COLORS.brandPrimary} value={`+${reward.xp} XP`} />
+        <Reward icon="city-variant" color={COLORS.success} value={`+${reward.restoration}`} />
       </View>
 
       <Pressable
@@ -124,6 +134,8 @@ const styles = StyleSheet.create({
   headerSub: { color: "#C9C5BE", fontSize: FONT.sm, fontWeight: "600", marginTop: 2 },
   coinPill: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#3A3B3A", borderRadius: RADIUS.pill, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm },
   coinText: { color: COLORS.onSurfaceInverse, fontWeight: "800", fontSize: FONT.base },
+  upgradePill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: COLORS.brandPrimary, borderRadius: RADIUS.pill, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, marginRight: SPACING.sm },
+  upgradeText: { color: COLORS.onBrandPrimary, fontWeight: "800", fontSize: FONT.sm },
   scroll: { padding: SPACING.lg, paddingBottom: SPACING["3xl"], gap: SPACING.md },
   card: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.lg, borderWidth: 1, borderColor: COLORS.border, ...SHADOW.card },
   cardTop: { flexDirection: "row", alignItems: "center", gap: SPACING.sm, marginBottom: SPACING.md },

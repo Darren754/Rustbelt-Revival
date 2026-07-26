@@ -10,7 +10,7 @@ import ProgressBar from "@/src/components/ProgressBar";
 
 export default function HallScreen() {
   const insets = useSafeAreaInsets();
-  const { loading, state, config, resetGame, playerId } = useGame();
+  const { loading, state, config, resetGame, grantCoins, resetUpgrades, playerId } = useGame();
   const [confirmReset, setConfirmReset] = useState(false);
 
   if (loading || !state) {
@@ -62,6 +62,24 @@ export default function HallScreen() {
         <View style={styles.statsRow}>
           <StatBox icon="star-four-points" label="Level" value={`${state.level}`} />
           <StatBox icon="clock-outline" label="Offline Cap" value={`${Math.round(config.offline_cap_seconds / 3600)}h`} />
+        </View>
+
+        <View style={styles.devCard} testID="dev-tools">
+          <View style={styles.devHead}>
+            <MaterialCommunityIcons name="hammer-screwdriver" size={18} color={COLORS.info} />
+            <Text style={styles.devTitle}>Developer Tools</Text>
+          </View>
+          <Text style={styles.devSub}>Prototype testing helpers.</Text>
+          <View style={styles.devRow}>
+            <Pressable style={styles.devBtn} onPress={() => grantCoins()} testID="dev-grant-coins-button">
+              <MaterialCommunityIcons name="cash-plus" size={18} color={COLORS.onInfo} />
+              <Text style={styles.devBtnText}>Grant {config.dev.grant_coins_amount} Coins</Text>
+            </Pressable>
+            <Pressable style={[styles.devBtn, styles.devBtnAlt]} onPress={resetUpgrades} testID="dev-reset-upgrades-button">
+              <MaterialCommunityIcons name="backup-restore" size={18} color={COLORS.onSurface} />
+              <Text style={[styles.devBtnText, { color: COLORS.onSurface }]}>Reset Upgrades</Text>
+            </Pressable>
+          </View>
         </View>
 
         <Pressable style={styles.resetBtn} onPress={() => setConfirmReset(true)} testID="reset-game-button">
@@ -123,6 +141,14 @@ const styles = StyleSheet.create({
   statValue: { fontSize: FONT["2xl"], fontWeight: "800", color: COLORS.onSurface, marginTop: SPACING.xs },
   statLabel: { fontSize: FONT.sm, color: COLORS.onSurfaceSecondary, fontWeight: "700" },
   resetBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: SPACING.sm, borderRadius: RADIUS.lg, paddingVertical: SPACING.md, borderWidth: 1.5, borderColor: COLORS.error },
+  devCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.lg, marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border, ...SHADOW.soft },
+  devHead: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
+  devTitle: { fontSize: FONT.lg, fontWeight: "800", color: COLORS.onSurface },
+  devSub: { fontSize: FONT.sm, color: COLORS.onSurfaceSecondary, fontWeight: "600", marginTop: 2, marginBottom: SPACING.md },
+  devRow: { flexDirection: "row", gap: SPACING.sm },
+  devBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: COLORS.info, borderRadius: RADIUS.md, paddingVertical: SPACING.md },
+  devBtnAlt: { backgroundColor: COLORS.surfaceTertiary },
+  devBtnText: { color: COLORS.onInfo, fontWeight: "800", fontSize: FONT.sm },
   resetText: { color: COLORS.error, fontWeight: "800", fontSize: FONT.base },
   playerId: { textAlign: "center", color: COLORS.onSurfaceTertiary, fontSize: FONT.sm, fontWeight: "600", marginTop: SPACING.lg },
   backdrop: { flex: 1, backgroundColor: "rgba(20,18,16,0.6)", alignItems: "center", justifyContent: "center", padding: SPACING.xl },
