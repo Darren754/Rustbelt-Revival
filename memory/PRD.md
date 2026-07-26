@@ -35,8 +35,9 @@ Town HUD (`/town`), Contracts / Shipping Depot (`/contracts`), Town Hall / Resto
   - Shipping Depot (now a building): `rewards` (+% coins/XP) + `quality` (bigger orders + restoration)
   - Upgrade UI shows current level, current & next benefit, and Coin cost (growth formula)
   - Safe migration of legacy single-`level`/`job` saves to Level-1 tracks
-- **Dev tools** (Town Hall): grant coins + reset upgrades
-- Haptics, tooltips, toasts; testIDs throughout. Verified by testing agent (backend 10/10 + all frontend flows).
+- **Dev tools** (Town Hall): grant coins, grant materials, level up, force emergency, reset upgrades
+- **Strategic tiered contracts**: Basic "Local Delivery" (Scrap), Intermediate "Regional Contract" (Components), Advanced "Industrial Contract" (Finished Goods) — single-material per tier, per-unit rewards × quantity so higher tiers pay dramatically more; tier gating by unlock level; weighted random board. Rare limited-time "Emergency Repair" contract with countdown + huge reward. Depot `quality` track = bigger orders. All tiers/quantities/rewards/probabilities configurable.
+- Haptics, tooltips, toasts; testIDs throughout. Verified by testing agent (backend 9-10/10) + visual e2e (tier unlock, emergency spawn/fulfil).
 
 ## Backlog
 - P1: Auth + real accounts (Google/JWT) on top of player_id; multi-device sync conflict UI

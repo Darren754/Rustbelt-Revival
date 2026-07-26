@@ -20,6 +20,7 @@ import {
   createDefaultState,
   effectiveReward,
   generateBoardContract,
+  generateEmergency,
   grantXp,
   jobDurationMs,
   machineSlots,
@@ -61,6 +62,9 @@ interface GameContextValue {
   markTutorialSeen: () => void;
   resetGame: () => void;
   grantCoins: (amount?: number) => void;
+  grantMaterials: () => void;
+  grantLevel: () => void;
+  forceEmergency: () => void;
   resetUpgrades: () => void;
   showToast: (msg: string) => void;
   playerId: string | null;
@@ -357,6 +361,51 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [showToast]
   );
 
+  const grantMaterials = useCallback(() => {
+    setState((prev) => {
+      if (!prev) return prev;
+      haptic("success");
+      showToast("+ Materials granted");
+      return {
+        ...prev,
+        resources: {
+          ...prev.resources,
+          scrap: prev.resources.scrap + 50,
+          components: prev.resources.components + 30,
+          finished_goods: prev.resources.finished_goods + 20,
+        },
+      };
+    });
+  }, [showToast]);
+
+  const grantLevel = useCallback(() => {
+    setState((prev) => {
+      if (!prev) return prev;
+      const cfg = configRef.current;
+      const level = prev.level + 1;
+      haptic("success");
+      showToast(`Level ${level} unlocked`);
+      const depot = prev.buildings.shipping_depot;
+      return {
+        ...prev,
+        level,
+        xp: 0,
+        // regenerate the board so newly unlocked tiers can appear immediately
+        contracts: Array.from({ length: cfg.contracts.board_size }, () => generateBoardContract(level, cfg, depot)),
+      };
+    });
+  }, [showToast]);
+
+  const forceEmergency = useCallback(() => {
+    setState((prev) => {
+      if (!prev) return prev;
+      const cfg = configRef.current;
+      haptic("heavy");
+      showToast("Emergency contract spawned");
+      return { ...prev, emergency: generateEmergency(cfg, prev.buildings.shipping_depot, Date.now()) };
+    });
+  }, [showToast]);
+
   const resetUpgrades = useCallback(() => {
     setState((prev) => {
       if (!prev) return prev;
@@ -382,12 +431,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     () => ({
       loading, now, config, state, offlineSummary, levelUpFlash,
       clearOfflineSummary, collectScrap, startJob, upgradeTrack, fulfillContract,
-      refreshContract, markTutorialSeen, resetGame, grantCoins, resetUpgrades, showToast, playerId,
+      refreshContract, markTutorialSeen, resetGame, grantCoins, grantMaterials, grantLevel,
+      forceEmergency, resetUpgrades, showToast, playerId,
     }),
     [
       loading, now, config, state, offlineSummary, levelUpFlash,
       clearOfflineSummary, collectScrap, startJob, upgradeTrack, fulfillContract,
-      refreshContract, markTutorialSeen, resetGame, grantCoins, resetUpgrades, showToast, playerId,
+      refreshContract, markTutorialSeen, resetGame, grantCoins, grantMaterials, grantLevel,
+      forceEmergency, resetUpgrades, showToast, playerId,
     ]
   );
 

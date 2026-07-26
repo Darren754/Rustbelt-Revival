@@ -10,7 +10,7 @@ import ProgressBar from "@/src/components/ProgressBar";
 
 export default function HallScreen() {
   const insets = useSafeAreaInsets();
-  const { loading, state, config, resetGame, grantCoins, resetUpgrades, playerId } = useGame();
+  const { loading, state, config, resetGame, grantCoins, grantMaterials, grantLevel, forceEmergency, resetUpgrades, playerId } = useGame();
   const [confirmReset, setConfirmReset] = useState(false);
 
   if (loading || !state) {
@@ -80,6 +80,20 @@ export default function HallScreen() {
               <Text style={[styles.devBtnText, { color: COLORS.onSurface }]}>Reset Upgrades</Text>
             </Pressable>
           </View>
+          <View style={styles.devRow}>
+            <Pressable style={styles.devBtn} onPress={grantMaterials} testID="dev-grant-materials-button">
+              <MaterialCommunityIcons name="package-variant" size={18} color={COLORS.onInfo} />
+              <Text style={styles.devBtnText}>Grant Materials</Text>
+            </Pressable>
+            <Pressable style={styles.devBtn} onPress={grantLevel} testID="dev-grant-level-button">
+              <MaterialCommunityIcons name="chevron-double-up" size={18} color={COLORS.onInfo} />
+              <Text style={styles.devBtnText}>Level Up</Text>
+            </Pressable>
+          </View>
+          <Pressable style={[styles.devBtn, styles.devEmergency]} onPress={forceEmergency} testID="dev-force-emergency-button">
+            <MaterialCommunityIcons name="alert-decagram" size={18} color={COLORS.onBrandPrimary} />
+            <Text style={styles.devBtnText}>Spawn Emergency Contract</Text>
+          </Pressable>
         </View>
 
         <Pressable style={styles.resetBtn} onPress={() => setConfirmReset(true)} testID="reset-game-button">
@@ -146,8 +160,9 @@ const styles = StyleSheet.create({
   devTitle: { fontSize: FONT.lg, fontWeight: "800", color: COLORS.onSurface },
   devSub: { fontSize: FONT.sm, color: COLORS.onSurfaceSecondary, fontWeight: "600", marginTop: 2, marginBottom: SPACING.md },
   devRow: { flexDirection: "row", gap: SPACING.sm },
-  devBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: COLORS.info, borderRadius: RADIUS.md, paddingVertical: SPACING.md },
+  devBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: COLORS.info, borderRadius: RADIUS.md, paddingVertical: SPACING.md, marginBottom: SPACING.sm },
   devBtnAlt: { backgroundColor: COLORS.surfaceTertiary },
+  devEmergency: { backgroundColor: "#D9822B" },
   devBtnText: { color: COLORS.onInfo, fontWeight: "800", fontSize: FONT.sm },
   resetText: { color: COLORS.error, fontWeight: "800", fontSize: FONT.base },
   playerId: { textAlign: "center", color: COLORS.onSurfaceTertiary, fontSize: FONT.sm, fontWeight: "600", marginTop: SPACING.lg },
