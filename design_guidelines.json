@@ -1,0 +1,156 @@
+{
+  "app_name": "Rustbelt Revival",
+  "personality": "4 Tactile / Playful structure with 8 Hand-Drawn earthy palette",
+  "personality_one_liner": "A warm, touchable, and slightly humorous industrial idle game with weathered earthy colors, chunky tactile buttons, and friendly progress feedback.",
+  "color": {
+    "surface": "#F5F2EE",
+    "onSurface": "#2A2B2A",
+    "surfaceSecondary": "#E8E5DF",
+    "onSurfaceSecondary": "#3F413F",
+    "surfaceTertiary": "#D9D4CD",
+    "onSurfaceTertiary": "#4B4E4B",
+    "surfaceInverse": "#2A2B2A",
+    "onSurfaceInverse": "#F5F2EE",
+    "brand": "#CC5500",
+    "brandPrimary": "#D95A21",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#B34726",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#F2B84B",
+    "onBrandTertiary": "#2A2B2A",
+    "success": "#4A7C59",
+    "onSuccess": "#FFFFFF",
+    "warning": "#F2B84B",
+    "onWarning": "#2A2B2A",
+    "error": "#C84C3C",
+    "onError": "#FFFFFF",
+    "info": "#4F759B",
+    "onInfo": "#FFFFFF",
+    "border": "#D9D4CD",
+    "borderStrong": "#B3AC9F",
+    "divider": "#E8E5DF"
+  },
+  "typography": {
+    "displayFontFamily": "Fredoka",
+    "textFontFamily": "Nunito",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Use chunky spacing for tactile game components. Ensure generous padding inside building cards and sticky bottoms for CTA.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "2",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "false",
+    "do's": [
+      "Avoid glassmorphism. Use solid tactile components with shadows to simulate chunky physical buttons, suiting the earthy/industrial vibe."
+    ],
+    "dont's": [
+      "Do not use blur or glass effects, as they contrast with the raw, weathered, rusted metal aesthetic."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Town HUD (Home)",
+      "purpose": "Displays top resource header (Scrap, Components, Finished Goods, Coins, XP) and scrollable illustrated list of building cards.",
+      "states": {
+        "loading": "Centered industrial gear spinner.",
+        "empty": "No buildings available. Show a 'Clear the rubble' placeholder.",
+        "error": "Failed to load save state. Show retry button."
+      },
+      "layout": "Fixed sticky Resource Inventory Header at top (grid of 5 currencies with icons). A global progress bar right below it for 'Town Restoration'. Main scrollview contains large touch-friendly cards for 'Scrap Yard', 'Machine Shop', and 'Shipping Depot'. Use Skia for placeholder abstract illustrations on the cards. Bottom Tab bar."
+    },
+    {
+      "name": "Building Details (Bottom Sheet)",
+      "purpose": "Contextual panel for upgrading and interacting with a specific building (e.g. Scrap Yard production loop).",
+      "states": {
+        "loading": "Skeleton of upgrade stats.",
+        "empty": "N/A",
+        "error": "Error loading building data."
+      },
+      "layout": "Gorhom bottom sheet popping up when a building card is pressed. Contains large animated progress bars for production timers. A huge primary 'Collect' or 'Start Job' CTA pinned to the bottom. Shows level up cost in large numbers."
+    },
+    {
+      "name": "Shipping Depot (Contracts)",
+      "purpose": "Contract board for fulfilling orders and earning coins + XP.",
+      "states": {
+        "loading": "Spinner",
+        "empty": "No current contracts. 'Wait for next shipment' illustration.",
+        "error": "Contract sync failed."
+      },
+      "layout": "3 horizontal or grid cards showing requested items vs inventory items. Large 'Fulfill' button on each. Pinned header with current Coins."
+    },
+    {
+      "name": "Welcome Back (Offline Summary)",
+      "purpose": "Modal overlay displayed upon app launch summarizing offline production.",
+      "states": {
+        "loading": "N/A",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "Centered modal card over an overlay. Shows 'While you were away...' title, a list of collected Scrap and Components, and a big 'Claim' CTA at the bottom."
+    }
+  ],
+  "images": {
+    "weathered_brick_bg": {
+      "url": "https://images.unsplash.com/photo-1547056961-3c25e9140b05?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHwyfHx3ZWF0aGVyZWQlMjBicmljayUyMHdhbGwlMjB0ZXh0dXJlJTIwYWJzdHJhY3R8ZW58MHx8fHwxNzg1MDM1OTQ1fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "weathered brown brick wall"
+    },
+    "rusted_metal_texture": {
+      "url": "https://images.unsplash.com/photo-1649626284458-c297b6b18344?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwyfHxydXN0ZWQlMjBzdGVlbCUyMG1ldGFsJTIwdGV4dHVyZSUyMGFic3RyYWN0fGVufDB8fHx8MTc4NTAzNTk0NXww&ixlib=rb-4.1.0&q=85",
+      "alt": "rusted metal surface"
+    },
+    "town_hero_illustration": {
+      "url": "https://images.pexels.com/photos/9271194/pexels-photo-9271194.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "industrial coastal town factory landscape"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Follow the 4 Tactile / Playful structure for component shapes: use large tappable areas, chunky cards, pill-shaped or rounded CTAs (radius lg/pill), and distinct shadow tier 2 to make buttons feel physical.",
+    "Do NOT use glassmorphism. This app requires a solid, matte, touch-friendly UI that fits the physical, raw, weathered industrial aesthetic.",
+    "Color Palette: Heavily rely on the primary rust (#D95A21) and safety warning yellow (#F2B84B) against the warm clay off-white surface. Ensure high contrast for all numbers and resources.",
+    "Typography: Use Fredoka for bouncy, friendly, heavy headings, and Nunito for highly readable, rounded body text. Never use heavy font weights above 500.",
+    "Layout: The top HUD must be omnipresent (absolute positioned or fixed layout at the top, respecting SafeArea) showing all 5 currencies with icons. Building cards should use Skia for simple, textured, geometric illustrations of factories since we must use placeholder art.",
+    "Interaction: Add haptics to all major verbs ('Collect', 'Start Job', 'Fulfill Contract'). Create bouncy reanimated scale transformations (spring) when building cards are pressed or progress bars complete.",
+    "Use Phosphor icons. Provide filled versions for active states or collected resources, and outlined versions for empty/inactive states."
+  ],
+  "haptics": {
+    "collect_resource": "success",
+    "start_production": "light",
+    "fulfill_contract": "success",
+    "open_bottom_sheet": "selection",
+    "claim_offline_rewards": "heavy"
+  }
+}
