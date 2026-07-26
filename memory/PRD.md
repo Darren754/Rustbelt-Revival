@@ -24,13 +24,19 @@ Town HUD (`/town`), Contracts / Shipping Depot (`/contracts`), Town Hall / Resto
 ## Implemented (2026-06)
 - Resource inventory header + level/XP bar + restoration meter (sticky)
 - Scrap Yard production loop (1 scrap/10s) with progress + Collect button
-- Machine Shop conversions (2 Scrap→Component 20s; 2 Components→Finished Good 30s), single job
-- Building upgrades with Coins (reduce production time, max lvl 8)
+- Machine Shop conversions (2 Scrap→Component 20s; 2 Components→Finished Good 30s)
 - Shipping Depot: 3 random contracts, fulfil (coins+XP+restoration), refresh, auto-replace
 - XP → level progression; 100 restoration → Town Hall restored + celebration
-- Offline production (8h cap, configurable) + Welcome-Back summary (time away, scrap earned, jobs completed)
+- Offline production (8h cap, configurable) + Welcome-Back summary
 - Cloud save + local cache; anonymous player_id; reset/new-town flow
-- Haptics, tooltips, toasts; testIDs throughout. Verified by testing agent (backend 7/7 + frontend flows).
+- **Configurable multi-track upgrade system** (all values in config/`/api/config`):
+  - Scrap Yard: `speed` (rate) + `storage` (capacity cap on ready scrap)
+  - Machine Shop: `speed` (time) + `slots` (unlock concurrent production slots, max 3)
+  - Shipping Depot (now a building): `rewards` (+% coins/XP) + `quality` (bigger orders + restoration)
+  - Upgrade UI shows current level, current & next benefit, and Coin cost (growth formula)
+  - Safe migration of legacy single-`level`/`job` saves to Level-1 tracks
+- **Dev tools** (Town Hall): grant coins + reset upgrades
+- Haptics, tooltips, toasts; testIDs throughout. Verified by testing agent (backend 10/10 + all frontend flows).
 
 ## Backlog
 - P1: Auth + real accounts (Google/JWT) on top of player_id; multi-device sync conflict UI
