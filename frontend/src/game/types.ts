@@ -34,6 +34,8 @@ export interface ShippingDepotState {
 export type BuildingKey = "scrap_yard" | "machine_shop" | "shipping_depot";
 export type TrackKey = "speed" | "storage" | "slots" | "rewards" | "quality";
 
+export type ContractTier = "basic" | "intermediate" | "advanced" | "emergency";
+
 export interface ContractReq {
   resource: MaterialKey;
   qty: number;
@@ -41,11 +43,15 @@ export interface ContractReq {
 
 export interface Contract {
   id: string;
-  title: string;
+  tier: ContractTier;
+  label: string; // e.g. "Local Delivery"
+  difficulty: string; // e.g. "Easy"
+  color: string;
   requirements: ContractReq[];
   reward_coins: number; // base — depot "rewards" track multiplies at fulfil
   reward_xp: number; // base
-  reward_restoration: number; // base — depot "quality" track adds a bonus
+  reward_restoration: number;
+  expires_at: number | null; // UTC epoch ms — only emergency contracts expire
 }
 
 export interface GameState {
@@ -60,6 +66,8 @@ export interface GameState {
     shipping_depot: ShippingDepotState;
   };
   contracts: Contract[];
+  emergency: Contract | null; // rare limited-time contract
+  emergency_next_check_ts: number; // UTC epoch ms — next spawn roll
   last_seen_ts: number; // UTC epoch ms
   tutorial_seen: boolean;
 }

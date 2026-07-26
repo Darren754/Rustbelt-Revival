@@ -89,18 +89,18 @@ export function depotCoinXpMult(depot: ShippingDepotState, cfg: GameConfig): num
 export function depotRewardPct(cfg: GameConfig, level: number): number {
   return Math.round(cfg.upgrades.shipping_depot.rewards.mult_per_level * (level - 1) * 100);
 }
-export function depotRestorationBonus(depot: ShippingDepotState, cfg: GameConfig): number {
-  return cfg.upgrades.shipping_depot.quality.restoration_per_level * (depot.upgrades.quality - 1);
+export function qualityQtyMult(depot: ShippingDepotState, cfg: GameConfig): number {
+  return 1 + cfg.upgrades.shipping_depot.quality.qty_per_level * (depot.upgrades.quality - 1);
 }
-export function depotQualityTierBonus(depot: ShippingDepotState, cfg: GameConfig): number {
-  return cfg.upgrades.shipping_depot.quality.tier_per_level * (depot.upgrades.quality - 1);
+export function depotQualityPct(cfg: GameConfig, level: number): number {
+  return Math.round(cfg.upgrades.shipping_depot.quality.qty_per_level * (level - 1) * 100);
 }
 export function effectiveReward(contract: Contract, depot: ShippingDepotState, cfg: GameConfig) {
   const m = depotCoinXpMult(depot, cfg);
   return {
     coins: Math.round(contract.reward_coins * m),
     xp: Math.round(contract.reward_xp * m),
-    restoration: contract.reward_restoration + depotRestorationBonus(depot, cfg),
+    restoration: contract.reward_restoration,
   };
 }
 
@@ -119,44 +119,91 @@ export function grantXp(state: GameState, amount: number, cfg: GameConfig): numb
   return levelsGained;
 }
 
-// ---- contracts ----
-export function generateContract(playerLevel: number, cfg: GameConfig, qualityTierBonus = 0): Contract {
-  const cc = cfg.contracts;
-  const tier = Math.min(playerLevel, 6) + qualityTierBonus;
-  const numReqs = 1 + Math.floor(Math.random() * Math.min(cc.max_requirements, 1 + Math.floor(tier / 2)));
-  const pool: MaterialKey[] = ["scrap"];
-  if (playerLevel >= cc.material_unlock.components) pool.push("components");
-  if (playerLevel >= cc.material_unlock.finished_goods) pool.push("finished_goods");
-  const chosen = new Set<MaterialKey>();
-  while (chosen.size < Math.min(numReqs, pool.length)) {
-    chosen.add(pool[Math.floor(Math.random() * pool.length)]);
-  }
-  const weight = cc.resource_weight as Record<MaterialKey, number>;
-  const baseQty = cc.base_qty as Record<MaterialKey, number>;
-  const requirements: ContractReq[] = [];
-  let value = 0;
-  chosen.forEach((resource) => {
-    const base = baseQty[resource];
-    const qty = base + Math.floor(Math.random() * (base + tier));
-    requirements.push({ resource, qty });
-    value += qty * weight[resource];
-  });
-  const reward_coins = Math.round(value * (cc.reward_coin_base + Math.random() * cc.reward_coin_var));
-  const reward_xp = Math.round(value * (cc.reward_xp_base + Math.random() * cc.reward_xp_var));
-  const reward_restoration = cc.restoration_min + Math.floor(Math.random() * cc.restoration_span);
-  return { id: genId(), title: pickTitle(), requirements, reward_coins, reward_xp, reward_restoration };
+// ---- contracts (tiered + rare emergency) ----
+function randInt(min: number, max: number): number {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+function randRange(range: number[]): number {
+  return range[0] + Math.random() * (range[1] - range[0]);
 }
 
-const TITLES = [
-  "City Repair Crew", "Old Mill Refit", "Bridge Rebuild", "Rail Yard Order",
-  "Harbor Supply", "School Restoration", "Fire Station Job", "Water Works",
-];
-function pickTitle(): string {
-  return TITLES[Math.floor(Math.random() * TITLES.length)];
+const DEFAULT_DEPOT: ShippingDepotState = { upgrades: { rewards: 1, quality: 1 } };
+
+export type TierKey = "basic" | "intermediate" | "advanced";
+
+// Which tiers the player has unlocked, in board display order.
+export function unlockedTiers(playerLevel: number, cfg: GameConfig): TierKey[] {
+  return (Object.keys(cfg.contracts.tiers) as TierKey[]).filter(
+    (k) => playerLevel >= (cfg.contracts.tiers as any)[k].unlock_level
+  );
+}
+
+function pickTier(playerLevel: number, cfg: GameConfig): TierKey {
+  const tiers = unlockedTiers(playerLevel, cfg);
+  const weights = tiers.map((k) => (cfg.contracts.tier_weights as any)[k] ?? 1);
+  const total = weights.reduce((a, b) => a + b, 0);
+  let roll = Math.random() * total;
+  for (let i = 0; i < tiers.length; i++) {
+    roll -= weights[i];
+    if (roll <= 0) return tiers[i];
+  }
+  return tiers[tiers.length - 1];
+}
+
+function buildContract(tier: string, def: any, depot: ShippingDepotState, cfg: GameConfig, expires_at: number | null): Contract {
+  const qty = Math.max(1, Math.round(randInt(def.qty_min, def.qty_max) * qualityQtyMult(depot, cfg)));
+  return {
+    id: genId(),
+    tier: tier as any,
+    label: def.label,
+    difficulty: def.difficulty,
+    color: def.color,
+    requirements: [{ resource: def.material as MaterialKey, qty }],
+    reward_coins: Math.max(1, Math.round(randRange(def.coin_per) * qty)),
+    reward_xp: Math.max(1, Math.round(randRange(def.xp_per) * qty)),
+    reward_restoration: Math.max(1, Math.round(randRange(def.rest_per) * qty)),
+    expires_at,
+  };
+}
+
+export function generateTierContract(tier: TierKey, cfg: GameConfig, depot: ShippingDepotState): Contract {
+  return buildContract(tier, (cfg.contracts.tiers as any)[tier], depot, cfg, null);
+}
+
+export function generateBoardContract(playerLevel: number, cfg: GameConfig, depot: ShippingDepotState): Contract {
+  return generateTierContract(pickTier(playerLevel, cfg), cfg, depot);
+}
+
+export function generateEmergency(cfg: GameConfig, depot: ShippingDepotState, now: number): Contract {
+  const e = cfg.contracts.emergency;
+  return buildContract("emergency", e, depot, cfg, now + e.duration_seconds * 1000);
 }
 
 export function canFulfill(state: GameState, contract: Contract): boolean {
   return contract.requirements.every((r) => state.resources[r.resource] >= r.qty);
+}
+
+// Spawn / expire the rare limited-time emergency contract.
+export function tickContracts(state: GameState, cfg: GameConfig, now: number): GameState {
+  const e = cfg.contracts.emergency;
+  let em = state.emergency;
+  let nextCheck = state.emergency_next_check_ts;
+  let changed = false;
+
+  if (em && em.expires_at != null && now > em.expires_at) {
+    em = null;
+    nextCheck = now + e.check_interval_seconds * 1000;
+    changed = true;
+  }
+  if (!em && e.enabled && state.level >= e.unlock_level && now >= nextCheck) {
+    changed = true;
+    if (Math.random() < e.spawn_chance) {
+      em = generateEmergency(cfg, state.buildings.shipping_depot, now);
+    }
+    nextCheck = now + e.check_interval_seconds * 1000;
+  }
+  if (!changed) return state;
+  return { ...state, emergency: em, emergency_next_check_ts: nextCheck };
 }
 
 // ---- state creation & migration ----
@@ -172,7 +219,11 @@ export function createDefaultState(now: number, cfg: GameConfig): GameState {
       machine_shop: { jobs: [], upgrades: { speed: 1, slots: 1 } },
       shipping_depot: { upgrades: { rewards: 1, quality: 1 } },
     },
-    contracts: Array.from({ length: cfg.contracts.board_size }, () => generateContract(1, cfg, 0)),
+    contracts: Array.from({ length: cfg.contracts.board_size }, () =>
+      generateBoardContract(1, cfg, DEFAULT_DEPOT)
+    ),
+    emergency: null,
+    emergency_next_check_ts: now + cfg.contracts.emergency.check_interval_seconds * 1000,
     last_seen_ts: now,
     tutorial_seen: false,
   };
@@ -216,7 +267,16 @@ export function normalizeState(raw: any, now: number, cfg: GameConfig): GameStat
         },
       },
     },
-    contracts: Array.isArray(raw.contracts) && raw.contracts.length ? raw.contracts : def.contracts,
+    contracts:
+      Array.isArray(raw.contracts) && raw.contracts.length && raw.contracts.every((c: any) => c && c.tier)
+        ? raw.contracts
+        : def.contracts,
+    emergency:
+      raw.emergency && typeof raw.emergency.expires_at === "number" && raw.emergency.expires_at > now
+        ? raw.emergency
+        : null,
+    emergency_next_check_ts:
+      typeof raw.emergency_next_check_ts === "number" ? raw.emergency_next_check_ts : def.emergency_next_check_ts,
   };
 }
 
@@ -285,6 +345,12 @@ export function computeOffline(
     }
   }
   ms.jobs = remaining;
+
+  // Emergency contract: expire it if the window closed while away.
+  if (next.emergency && next.emergency.expires_at != null && now > next.emergency.expires_at) {
+    next.emergency = null;
+    next.emergency_next_check_ts = now + cfg.contracts.emergency.check_interval_seconds * 1000;
+  }
 
   return { state: next, summary };
 }

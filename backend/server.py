@@ -47,18 +47,40 @@ GAME_CONFIG: Dict[str, Any] = {
         },
         "shipping_depot": {
             "rewards": {"max_level": 8, "cost_base": 120, "cost_growth": 1.8, "mult_per_level": 0.15},
-            "quality": {"max_level": 6, "cost_base": 180, "cost_growth": 2.0, "tier_per_level": 1, "restoration_per_level": 2},
+            "quality": {"max_level": 6, "cost_base": 180, "cost_growth": 2.0, "qty_per_level": 0.2},
         },
     },
     "contracts": {
         "board_size": 3,
-        "max_requirements": 3,
-        "material_unlock": {"components": 2, "finished_goods": 4},
-        "resource_weight": {"scrap": 1, "components": 4, "finished_goods": 10},
-        "base_qty": {"scrap": 4, "components": 2, "finished_goods": 1},
-        "reward_coin_base": 3, "reward_coin_var": 2,
-        "reward_xp_base": 1.5, "reward_xp_var": 1,
-        "restoration_min": 4, "restoration_span": 6,
+        "tier_weights": {"basic": 3, "intermediate": 2, "advanced": 2},
+        "tiers": {
+            "basic": {
+                "material": "scrap", "unlock_level": 1,
+                "qty_min": 8, "qty_max": 20,
+                "coin_per": [0.5, 0.8], "xp_per": [0.3, 0.5], "rest_per": [0.1, 0.2],
+                "label": "Local Delivery", "difficulty": "Easy", "color": "#4A7C59",
+            },
+            "intermediate": {
+                "material": "components", "unlock_level": 2,
+                "qty_min": 4, "qty_max": 10,
+                "coin_per": [4, 6], "xp_per": [2, 3], "rest_per": [0.7, 1.2],
+                "label": "Regional Contract", "difficulty": "Medium", "color": "#4F759B",
+            },
+            "advanced": {
+                "material": "finished_goods", "unlock_level": 4,
+                "qty_min": 2, "qty_max": 6,
+                "coin_per": [18, 28], "xp_per": [9, 14], "rest_per": [2.5, 4],
+                "label": "Industrial Contract", "difficulty": "Hard", "color": "#7A4F9B",
+            },
+        },
+        "emergency": {
+            "enabled": True,
+            "material": "finished_goods", "unlock_level": 4,
+            "qty_min": 4, "qty_max": 8,
+            "coin_per": [40, 60], "xp_per": [20, 30], "rest_per": [4, 6],
+            "duration_seconds": 600, "check_interval_seconds": 120, "spawn_chance": 0.3,
+            "label": "Emergency Repair", "difficulty": "Rare", "color": "#D9822B",
+        },
     },
     "dev": {"grant_coins_amount": 1000},
 }

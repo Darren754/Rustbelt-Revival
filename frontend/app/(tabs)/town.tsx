@@ -54,6 +54,7 @@ export default function TownScreen() {
     ? ms.jobs.reduce((a, b) => (jobRemainingMs(a, now) <= jobRemainingMs(b, now) ? a : b))
     : null;
   const readyContracts = state.contracts.filter((c) => canFulfill(state, c)).length;
+  const hasEmergency = !!state.emergency;
 
   return (
     <View style={styles.container} testID="town-screen">
@@ -118,13 +119,14 @@ export default function TownScreen() {
           testID="card-shipping-depot"
           icon="truck-delivery"
           title="Shipping Depot"
-          gradient={["#3E5A6E", "#274050"]}
+          gradient={hasEmergency ? ["#D9822B", "#A65D14"] : ["#3E5A6E", "#274050"]}
           onPress={() => router.push("/contracts")}
-          badge={readyContracts > 0 ? `${readyContracts}` : undefined}
+          badge={hasEmergency ? "!" : readyContracts > 0 ? `${readyContracts}` : undefined}
         >
           <Text style={styles.cardStatus}>
-            {state.contracts.length} contracts on the board
-            {readyContracts > 0 ? ` · ${readyContracts} ready` : ""}
+            {hasEmergency
+              ? "⚠ Emergency Repair available — limited time!"
+              : `${state.contracts.length} contracts on the board${readyContracts > 0 ? ` · ${readyContracts} ready` : ""}`}
           </Text>
         </BuildingCard>
       </ScrollView>

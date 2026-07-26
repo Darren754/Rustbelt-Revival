@@ -9,6 +9,7 @@ import ProgressBar from "./ProgressBar";
 import { BuildingKey, TrackKey } from "@/src/game/types";
 import {
   buildingLevel,
+  depotQualityPct,
   depotRewardPct,
   formatDuration,
   jobDurationSec,
@@ -246,15 +247,14 @@ function ShippingDepotBody({ state, config, onUpgrade }: any) {
   const depot = state.buildings.shipping_depot;
   const rewardPct = depotRewardPct(config, depot.upgrades.rewards);
   const nextRewardPct = depotRewardPct(config, depot.upgrades.rewards + 1);
-  const q = config.upgrades.shipping_depot.quality;
-  const restBonus = q.restoration_per_level * (depot.upgrades.quality - 1);
-  const nextRestBonus = q.restoration_per_level * depot.upgrades.quality;
+  const qtyPct = depotQualityPct(config, depot.upgrades.quality);
+  const nextQtyPct = depotQualityPct(config, depot.upgrades.quality + 1);
 
   return (
     <View>
       <View style={styles.readyCard}>
         <Text style={styles.readyLabel}>Depot bonuses apply to every contract</Text>
-        <Text style={styles.hint}>+{rewardPct}% Coins &amp; XP · +{restBonus} restoration per order</Text>
+        <Text style={styles.hint}>+{rewardPct}% Coins &amp; XP · +{qtyPct}% bigger orders (more reward)</Text>
       </View>
 
       <Text style={styles.sectionLabel}>Upgrades</Text>
@@ -265,8 +265,8 @@ function ShippingDepotBody({ state, config, onUpgrade }: any) {
       />
       <UpgradeTrack
         building="shipping_depot" track="quality" config={config} coins={state.resources.coins} level={depot.upgrades.quality}
-        icon="star-shooting" title="Contract Quality"
-        current={`Bigger orders · +${restBonus} restoration`} next={`Bigger orders · +${nextRestBonus} restoration`} onUpgrade={onUpgrade}
+        icon="resize" title="Contract Quality"
+        current={`+${qtyPct}% order size`} next={`+${nextQtyPct}% order size`} onUpgrade={onUpgrade}
       />
     </View>
   );

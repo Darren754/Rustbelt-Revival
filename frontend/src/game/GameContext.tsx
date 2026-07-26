@@ -18,14 +18,14 @@ import {
   canFulfill,
   computeOffline,
   createDefaultState,
-  depotQualityTierBonus,
   effectiveReward,
-  generateContract,
+  generateBoardContract,
   grantXp,
   jobDurationMs,
   machineSlots,
   normalizeState,
   readyScrap,
+  tickContracts,
   tickMachineShop,
   trackCost,
   trackMaxed,
@@ -144,10 +144,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setNow(t);
       const cur = stateRef.current;
       if (!cur) return;
-      const ticked = tickMachineShop(cur, configRef.current, t);
-      if (ticked !== cur) {
-        setState(ticked);
-        stateRef.current = ticked;
+      let s = tickMachineShop(cur, configRef.current, t);
+      s = tickContracts(s, configRef.current, t);
+      if (s !== cur) {
+        setState(s);
+        stateRef.current = s;
       }
     }, 500);
     return () => clearInterval(id);
@@ -274,7 +275,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setState((prev) => {
         if (!prev) return prev;
         const cfg = configRef.current;
-        const contract = prev.contracts.find((c) => c.id === id);
+        const isEmergency = prev.emergency?.id === id;
+        const contract = isEmergency ? prev.emergency! : prev.contracts.find((c) => c.id === id);
         if (!contract) return prev;
         if (!canFulfill(prev, contract)) {
           haptic("error");
@@ -291,9 +293,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const next: GameState = {
           ...prev,
           resources,
-          contracts: prev.contracts.map((c) =>
-            c.id === id ? generateContract(prev.level, cfg, depotQualityTierBonus(depot, cfg)) : c
-          ),
+          contracts: isEmergency
+            ? prev.contracts
+            : prev.contracts.map((c) => (c.id === id ? generateBoardContract(prev.level, cfg, depot) : c)),
+          emergency: isEmergency ? null : prev.emergency,
+          emergency_next_check_ts: isEmergency
+            ? Date.now() + cfg.contracts.emergency.check_interval_seconds * 1000
+            : prev.emergency_next_check_ts,
           restoration_points: Math.min(cfg.restoration_goal, prev.restoration_points + reward.restoration),
         };
         const levels = grantXp(next, reward.xp, cfg);
@@ -319,9 +325,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const depot = prev.buildings.shipping_depot;
       return {
         ...prev,
-        contracts: prev.contracts.map((c) =>
-          c.id === id ? generateContract(prev.level, cfg, depotQualityTierBonus(depot, cfg)) : c
-        ),
+        contracts: prev.contracts.map((c) => (c.id === id ? generateBoardContract(prev.level, cfg, depot) : c)),
       };
     });
   }, []);
