@@ -86,25 +86,29 @@ export function grantXp(state: GameState, amount: number, cfg: GameConfig): numb
 
 // ---- contracts ----
 export function generateContract(playerLevel: number, cfg: GameConfig): Contract {
+  const cc = cfg.contracts;
   const tier = Math.min(playerLevel, 6);
-  const numReqs = 1 + Math.floor(Math.random() * Math.min(3, 1 + Math.floor(tier / 2)));
-  const pool: MaterialKey[] = playerLevel < 2 ? ["scrap"] : playerLevel < 4 ? ["scrap", "components"] : MATERIALS;
+  const numReqs = 1 + Math.floor(Math.random() * Math.min(cc.max_requirements, 1 + Math.floor(tier / 2)));
+  const pool: MaterialKey[] = ["scrap"];
+  if (playerLevel >= cc.material_unlock.components) pool.push("components");
+  if (playerLevel >= cc.material_unlock.finished_goods) pool.push("finished_goods");
   const chosen = new Set<MaterialKey>();
-  while (chosen.size < numReqs) {
+  while (chosen.size < Math.min(numReqs, pool.length)) {
     chosen.add(pool[Math.floor(Math.random() * pool.length)]);
   }
-  const weight: Record<MaterialKey, number> = { scrap: 1, components: 4, finished_goods: 10 };
+  const weight = cc.resource_weight as Record<MaterialKey, number>;
+  const baseQty = cc.base_qty as Record<MaterialKey, number>;
   const requirements: ContractReq[] = [];
   let value = 0;
   chosen.forEach((resource) => {
-    const base = resource === "scrap" ? 4 : resource === "components" ? 2 : 1;
+    const base = baseQty[resource];
     const qty = base + Math.floor(Math.random() * (base + tier));
     requirements.push({ resource, qty });
     value += qty * weight[resource];
   });
-  const reward_coins = Math.round(value * (3 + Math.random() * 2));
-  const reward_xp = Math.round(value * (1.5 + Math.random()));
-  const reward_restoration = 4 + Math.floor(Math.random() * 6);
+  const reward_coins = Math.round(value * (cc.reward_coin_base + Math.random() * cc.reward_coin_var));
+  const reward_xp = Math.round(value * (cc.reward_xp_base + Math.random() * cc.reward_xp_var));
+  const reward_restoration = cc.restoration_min + Math.floor(Math.random() * cc.restoration_span);
   return {
     id: genId(),
     title: pickTitle(),
@@ -145,11 +149,7 @@ export function createDefaultState(now: number, cfg: GameConfig): GameState {
       scrap_yard: { level: 1, baseline_ts: now },
       machine_shop: { level: 1, job: null },
     },
-    contracts: [
-      generateContract(1, cfg),
-      generateContract(1, cfg),
-      generateContract(1, cfg),
-    ],
+    contracts: Array.from({ length: cfg.contracts.board_size }, () => generateContract(1, cfg)),
     last_seen_ts: now,
     tutorial_seen: false,
   };
