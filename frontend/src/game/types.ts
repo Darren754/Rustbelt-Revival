@@ -60,6 +60,7 @@ export interface GameState {
   xp: number; // progress toward next level
   restoration_points: number;
   town_hall_restored: boolean;
+  claimed_milestones: number[]; // milestone point-thresholds whose one-time bonus was paid
   buildings: {
     scrap_yard: ScrapYardState;
     machine_shop: MachineShopState;

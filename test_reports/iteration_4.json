@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 4 (restoration milestones + value-score badges) verified. Backend 9/9 pytest cases pass in /app/backend/tests/test_milestones_iter4.py: GET /api/config exposes restoration_milestones (4 entries: 25/Old Clock Tower/+150/+5%, 50/Rail Station/+350/+5%, 75/River Bridge/+600/+5%, 100/Grand Town Hall/+1000/+10%), and contracts.value_score (w_coins=1.0, w_xp=1.2, w_restoration=8.0, w_materials=1.0, w_time=0.2, premium_threshold=380, unit_time_seconds scrap=10/comp=40/finished=110). Save/load round-trip preserves state.claimed_milestones ([25,50], [], and [25,50,75,100] verified). Frontend Town Hall shows landmarks-section with 4 skyline tiles (all locked at 0 pts) and 4 landmark rows with correct '+X% rewards · +Y coins' text and 'N pts' status. Via dev tools (grant level ×5 + grant materials ×10 + repeated Fulfil Order) restoration reached 100/100; all 4 milestones triggered a landmark toast in order (Clock Tower→Rail Station→River Bridge→Grand Town Hall) and skyline tiles flipped to skyline-<pts>-unlocked. Contract reward numbers scaled up after buff: Industrial (3 goods) went from +57c/+29 XP pre-buff to +75c/+46 XP after +25% total buff. Value-score badges: on the 3-card board best_value + quick_cash pills appeared, at most one best_value across cards, no duplicate badge type — matches spec. ONE UX BUG FOUND: milestone toast duplicates 2-3× per crossing (Clock Tower toasted at 3 consecutive fulfils even though claimed_milestones should gate it) — root cause is showToast() being called inside the setState functional updater in fulfillContract, so React StrictMode double-invokes and the toast side-effect fires each time. Coin bonus itself is NOT double-paid (React keeps only the final next state). Emergency-card 'no value badge' assertion could not be run to completion in-browser because a Town Hall Restored! modal covered the board after restoration hit 100 — verified by code inspection instead (EmergencyCard has no badge testID). Regression: full loop (scrap → machine shop → contracts → dev tools → reset) still works.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "GameContext.fulfillContract (milestone toast)",
+        "issue": "Milestone toast '🏛 <landmark> restored! +N coins' fires 2-3 times for the same landmark on consecutive fulfils. Repro: reach 25 restoration on fulfil #A → toast; on fulfil #A+1 (restoration=e.g. 35, milestone 25 already claimed) → SAME Clock Tower toast fires again. Coins are correct (single bonus). Root cause: showToast() is invoked inside setState((prev)=>{...}) — StrictMode double-invokes and the impure side-effect runs each pass. Move showToast + haptic OUT of the setState updater (compute a 'landmarkUnlocked' local and fire the toast after setState, e.g. via a useEffect on claimed_milestones length). Reference: /app/frontend/src/game/GameContext.tsx:319-330",
+        "testID": "game-toast",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Contracts (post-restore)",
+        "issues": ["'Town Hall Restored!' modal covers the whole board with no visible close/backdrop-tap; only the 'Keep Building' button dismisses it. Consider adding backdrop-tap-to-dismiss."]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_milestones_iter4.py",
+    "/app/test_reports/pytest/iter4_results.xml"
+  ],
+  "action_items": [
+    "Fix duplicate milestone toast: extract showToast/haptic side-effects OUT of the setState updater in fulfillContract (GameContext.tsx lines ~316-330). Suggested: capture 'unlockedName' and 'bonusTotal' into a ref/deferred value, then trigger showToast in a useEffect that watches state.claimed_milestones length changes. This also silences React StrictMode double-invocation issues going forward.",
+    "(Optional) Add close/backdrop-tap to the 'Town Hall Restored!' celebration modal so it doesn't block the board.",
+    "(Optional) Legacy console warnings persist (shadow* deprecated, props.pointerEvents deprecated) — safe to migrate at leisure."
+  ],
+  "critical_code_review_comments": [
+    "GameContext.fulfillContract: side-effects (showToast, haptic, setLevelUpFlash) live INSIDE the setState functional updater. In StrictMode/dev this fires twice per action; in prod it's still an anti-pattern. Move to useEffect on derived state.",
+    "engine.contractBadges early-returns {} when contracts.length < 2 — correct, but with board_size=3 in config this is fine; document assumption.",
+    "engine.contractBadges: argmaxId uses initial 'best' element without reduce accumulator seed — works but silently returns first-in-tie. Ties on efficiency/score are common with generated integers; consider deterministic tie-breaking (e.g., higher score wins, then higher coins).",
+    "hall.tsx.LandmarksSection re-computes landmarks(...) on every render — cheap, but wrap in useMemo for consistency with other sections."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "100% (9/9)", "frontend": "~90% (all rendering + core milestone/badge flows verified; one UX bug on toast duplication; emergency-no-badge verified via code inspection due to celebration modal blocking board)" },
+  "seed_data_creation": "TEST_player_ms_<ts>, TEST_player_ms_<ts>_empty, TEST_player_ms_<ts>_all — all created and cleaned up in test_milestones_iter4.py fixtures.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Reuse /app/backend/tests/test_milestones_iter4.py for regression. Frontend testing needs: (1) reset the game before triggering milestones (Town Hall → Start a New Town) so the Town-Hall-Restored modal doesn't hide follow-up scenarios, (2) after fixing the toast bug, re-run the milestone-fulfill loop and expect EXACTLY ONE toast per crossing (4 total, one per landmark), (3) to verify emergency-no-badge cleanly, start from a fresh game at level 5+ (grantLevel ×4) with materials, DO NOT push restoration to 100 first, then dev-force-emergency → assert 0 [data-testid^='contract-badge-'] inside [data-testid='contract-emergency'].",
+  "rca_of_issue": "Duplicate milestone toast root cause: showToast() is called inside the setState functional updater in fulfillContract. React StrictMode intentionally double-invokes updaters to detect impure reducers; each pass re-fires the setToast side-effect, producing 2-3 visible toasts per single fulfil that crosses a threshold. State itself (claimed_milestones, coins) is correct because React only commits the final 'next'. Fix: hoist toast/haptic out of the reducer — compute a payload inside setState (or via a state diff useEffect on claimed_milestones.length) and trigger showToast + haptic exactly once per commit."
+}

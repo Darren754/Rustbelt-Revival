@@ -5,9 +5,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS, RADIUS, SPACING, FONT, SHADOW, RESOURCE_META } from "@/src/theme/theme";
 import { useGame } from "@/src/game/GameContext";
-import { canFulfill, effectiveReward, formatDuration } from "@/src/game/engine";
-import { Contract } from "@/src/game/types";
+import { canFulfill, contractBadges, effectiveReward, formatDuration, milestoneRewardBuffPct } from "@/src/game/engine";
+import { BadgeKey, Contract } from "@/src/game/types";
 import BuildingSheet from "@/src/components/BuildingSheet";
+
+const BADGE_META: Record<BadgeKey, { label: string; icon: string; color: string }> = {
+  best_value: { label: "Best Value", icon: "star", color: "#D9A21B" },
+  quick_cash: { label: "Quick Cash", icon: "flash", color: "#4F759B" },
+  best_restoration: { label: "Best Restoration", icon: "hammer", color: "#4A7C59" },
+  best_xp: { label: "Best XP", icon: "trending-up", color: "#D95A21" },
+  premium: { label: "Premium", icon: "diamond-stone", color: "#7A4F9B" },
+};
 
 export default function ContractsScreen() {
   const insets = useSafeAreaInsets();
@@ -24,6 +32,8 @@ export default function ContractsScreen() {
 
   const depot = state.buildings.shipping_depot;
   const emergency = state.emergency;
+  const buffPct = milestoneRewardBuffPct(state.restoration_points, config);
+  const badges = contractBadges(state.contracts, depot, config, buffPct);
 
   return (
     <View style={styles.container} testID="contracts-screen">
@@ -46,7 +56,7 @@ export default function ContractsScreen() {
         {emergency && (
           <EmergencyCard
             contract={emergency}
-            reward={effectiveReward(emergency, depot, config)}
+            reward={effectiveReward(emergency, depot, config, buffPct)}
             remainingMs={emergency.expires_at ? emergency.expires_at - now : 0}
             fulfillable={canFulfill(state, emergency)}
             inventory={state.resources}
@@ -58,7 +68,8 @@ export default function ContractsScreen() {
           <ContractCard
             key={c.id}
             contract={c}
-            reward={effectiveReward(c, depot, config)}
+            reward={effectiveReward(c, depot, config, buffPct)}
+            badge={badges[c.id]}
             fulfillable={canFulfill(state, c)}
             inventory={state.resources}
             onFulfill={() => fulfillContract(c.id)}
@@ -102,16 +113,24 @@ function ReqChips({ contract, inventory }: { contract: Contract; inventory: any 
   );
 }
 
-function ContractCard({ contract, reward, fulfillable, inventory, onFulfill, onRefresh }: {
+function ContractCard({ contract, reward, badge, fulfillable, inventory, onFulfill, onRefresh }: {
   contract: Contract;
   reward: { coins: number; xp: number; restoration: number };
+  badge?: BadgeKey;
   fulfillable: boolean;
   inventory: any;
   onFulfill: () => void;
   onRefresh: () => void;
 }) {
+  const bm = badge ? BADGE_META[badge] : null;
   return (
     <View style={[styles.card, { borderLeftColor: contract.color, borderLeftWidth: 5 }]} testID={`contract-${contract.id}`}>
+      {bm && (
+        <View style={[styles.badge, { backgroundColor: bm.color }]} testID={`contract-badge-${badge}`}>
+          <MaterialCommunityIcons name={bm.icon as any} size={13} color={"#FFFFFF"} />
+          <Text style={styles.badgeText}>{bm.label}</Text>
+        </View>
+      )}
       <View style={styles.cardTop}>
         <View style={[styles.tierDot, { backgroundColor: contract.color }]} />
         <View style={{ flex: 1 }}>
@@ -212,6 +231,8 @@ const styles = StyleSheet.create({
   upgradeText: { color: COLORS.onBrandPrimary, fontWeight: "800", fontSize: FONT.sm },
   scroll: { padding: SPACING.lg, paddingBottom: SPACING["3xl"], gap: SPACING.md },
   card: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.lg, borderWidth: 1, borderColor: COLORS.border, ...SHADOW.card },
+  badge: { position: "absolute", top: -9, right: 14, flexDirection: "row", alignItems: "center", gap: 4, borderRadius: RADIUS.pill, paddingHorizontal: SPACING.md, paddingVertical: 4, ...SHADOW.soft },
+  badgeText: { color: "#FFFFFF", fontWeight: "800", fontSize: 11, letterSpacing: 0.3 },
   emergencyCard: { borderColor: "#D9822B", borderWidth: 2, backgroundColor: "#FBF3E9" },
   emergencyRibbon: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#D9822B", alignSelf: "flex-start", borderRadius: RADIUS.pill, paddingHorizontal: SPACING.md, paddingVertical: 5, marginBottom: SPACING.md },
   ribbonText: { color: COLORS.onBrandPrimary, fontWeight: "800", fontSize: 11, letterSpacing: 0.5 },

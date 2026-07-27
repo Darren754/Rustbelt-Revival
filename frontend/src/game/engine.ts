@@ -95,13 +95,76 @@ export function qualityQtyMult(depot: ShippingDepotState, cfg: GameConfig): numb
 export function depotQualityPct(cfg: GameConfig, level: number): number {
   return Math.round(cfg.upgrades.shipping_depot.quality.qty_per_level * (level - 1) * 100);
 }
-export function effectiveReward(contract: Contract, depot: ShippingDepotState, cfg: GameConfig) {
-  const m = depotCoinXpMult(depot, cfg);
+export function effectiveReward(contract: Contract, depot: ShippingDepotState, cfg: GameConfig, extraRewardPct = 0) {
+  const m = depotCoinXpMult(depot, cfg) * (1 + extraRewardPct / 100);
   return {
     coins: Math.round(contract.reward_coins * m),
     xp: Math.round(contract.reward_xp * m),
     restoration: contract.reward_restoration,
   };
+}
+
+// ---- restoration milestones / landmarks ----
+export interface LandmarkView {
+  points: number;
+  landmark: string;
+  icon: string;
+  coin_bonus: number;
+  reward_buff_pct: number;
+  unlocked: boolean;
+}
+export function milestoneRewardBuffPct(restorationPoints: number, cfg: GameConfig): number {
+  return cfg.restoration_milestones.reduce(
+    (sum, m) => (restorationPoints >= m.points ? sum + m.reward_buff_pct : sum),
+    0
+  );
+}
+export function landmarks(restorationPoints: number, cfg: GameConfig): LandmarkView[] {
+  return cfg.restoration_milestones.map((m) => ({ ...m, unlocked: restorationPoints >= m.points }));
+}
+
+// ---- "Value Score" contract badges (configurable weights; emergency excluded) ----
+export type BadgeKey = "best_value" | "quick_cash" | "best_restoration" | "best_xp" | "premium";
+
+export function contractBadges(
+  contracts: Contract[],
+  depot: ShippingDepotState,
+  cfg: GameConfig,
+  buffPct = 0
+): Record<string, BadgeKey> {
+  const vs = cfg.contracts.value_score as any;
+  if (contracts.length < 2) return {};
+  const rows = contracts.map((c) => {
+    const eff = effectiveReward(c, depot, cfg, buffPct);
+    const materials = c.requirements.reduce((a, r) => a + r.qty, 0);
+    const estTime = Math.max(
+      1,
+      c.requirements.reduce((a, r) => a + r.qty * (vs.unit_time_seconds[r.resource] ?? 10), 0)
+    );
+    const effort = Math.max(1, vs.w_materials * materials + vs.w_time * estTime);
+    const score = vs.w_coins * eff.coins + vs.w_xp * eff.xp + vs.w_restoration * eff.restoration;
+    return { id: c.id, coins: eff.coins, xp: eff.xp, rest: eff.restoration, estTime, effort, score, efficiency: score / effort };
+  });
+  const argmaxId = (fn: (r: (typeof rows)[number]) => number) =>
+    rows.reduce((best, r) => (fn(r) > fn(best) ? r : best)).id;
+  const maxScore = Math.max(...rows.map((r) => r.score));
+
+  // Priority order — Best Value always shown first; Premium is a rare flavour tag.
+  const candidates: [BadgeKey, string, boolean][] = [
+    ["best_value", argmaxId((r) => r.efficiency), true],
+    ["premium", argmaxId((r) => r.score), maxScore >= vs.premium_threshold],
+    ["quick_cash", argmaxId((r) => r.coins / r.estTime), true],
+    ["best_restoration", argmaxId((r) => r.rest / r.effort), true],
+    ["best_xp", argmaxId((r) => r.xp / r.estTime), true],
+  ];
+  const result: Record<string, BadgeKey> = {};
+  const usedBadge = new Set<BadgeKey>();
+  for (const [badge, id, ok] of candidates) {
+    if (!ok || result[id] || usedBadge.has(badge)) continue;
+    result[id] = badge;
+    usedBadge.add(badge);
+  }
+  return result;
 }
 
 // ---- xp / level ----
@@ -214,6 +277,7 @@ export function createDefaultState(now: number, cfg: GameConfig): GameState {
     xp: 0,
     restoration_points: 0,
     town_hall_restored: false,
+    claimed_milestones: [],
     buildings: {
       scrap_yard: { baseline_ts: now, upgrades: { speed: 1, storage: 1 } },
       machine_shop: { jobs: [], upgrades: { speed: 1, slots: 1 } },
@@ -277,6 +341,7 @@ export function normalizeState(raw: any, now: number, cfg: GameConfig): GameStat
         : null,
     emergency_next_check_ts:
       typeof raw.emergency_next_check_ts === "number" ? raw.emergency_next_check_ts : def.emergency_next_check_ts,
+    claimed_milestones: Array.isArray(raw.claimed_milestones) ? raw.claimed_milestones : [],
   };
 }
 

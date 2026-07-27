@@ -24,6 +24,7 @@ import {
   grantXp,
   jobDurationMs,
   machineSlots,
+  milestoneRewardBuffPct,
   normalizeState,
   readyScrap,
   tickContracts,
@@ -289,7 +290,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         }
         haptic("success");
         const depot = prev.buildings.shipping_depot;
-        const reward = effectiveReward(contract, depot, cfg);
+        const buffPct = milestoneRewardBuffPct(prev.restoration_points, cfg);
+        const reward = effectiveReward(contract, depot, cfg, buffPct);
         const resources = { ...prev.resources } as any;
         contract.requirements.forEach((r) => (resources[r.resource] -= r.qty));
         resources.coins += reward.coins;
@@ -310,6 +312,21 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         if (levels > 0) {
           haptic("heavy");
           setLevelUpFlash(Date.now());
+        }
+        // Restoration milestones: unlock landmark + one-time coin bonus (permanent buff derived from points).
+        let unlockedName = "";
+        let bonusTotal = 0;
+        for (const ms of cfg.restoration_milestones) {
+          if (next.restoration_points >= ms.points && !next.claimed_milestones.includes(ms.points)) {
+            next.claimed_milestones = [...next.claimed_milestones, ms.points];
+            next.resources.coins += ms.coin_bonus;
+            bonusTotal += ms.coin_bonus;
+            unlockedName = ms.landmark;
+          }
+        }
+        if (unlockedName) {
+          haptic("heavy");
+          showToast(`🏛 ${unlockedName} restored! +${bonusTotal} coins`);
         }
         if (!next.town_hall_restored && next.restoration_points >= cfg.restoration_goal) {
           next.town_hall_restored = true;

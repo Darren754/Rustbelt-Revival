@@ -36,6 +36,12 @@ GAME_CONFIG: Dict[str, Any] = {
     },
     "xp_base": 100,
     "restoration_goal": 100,
+    "restoration_milestones": [
+        {"points": 25, "landmark": "Old Clock Tower", "icon": "clock-time-four", "coin_bonus": 150, "reward_buff_pct": 5},
+        {"points": 50, "landmark": "Rail Station", "icon": "train-variant", "coin_bonus": 350, "reward_buff_pct": 5},
+        {"points": 75, "landmark": "River Bridge", "icon": "bridge", "coin_bonus": 600, "reward_buff_pct": 5},
+        {"points": 100, "landmark": "Grand Town Hall", "icon": "city-variant", "coin_bonus": 1000, "reward_buff_pct": 10},
+    ],
     "upgrades": {
         "scrap_yard": {
             "speed": {"max_level": 8, "cost_base": 60, "cost_growth": 1.7, "factor": 0.85},
@@ -80,6 +86,12 @@ GAME_CONFIG: Dict[str, Any] = {
             "coin_per": [40, 60], "xp_per": [20, 30], "rest_per": [4, 6],
             "duration_seconds": 600, "check_interval_seconds": 120, "spawn_chance": 0.3,
             "label": "Emergency Repair", "difficulty": "Rare", "color": "#D9822B",
+        },
+        "value_score": {
+            "w_coins": 1.0, "w_xp": 1.2, "w_restoration": 8.0,
+            "w_materials": 1.0, "w_time": 0.2,
+            "premium_threshold": 380,
+            "unit_time_seconds": {"scrap": 10, "components": 40, "finished_goods": 110},
         },
     },
     "dev": {"grant_coins_amount": 1000},

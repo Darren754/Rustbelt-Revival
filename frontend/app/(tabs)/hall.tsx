@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS, RADIUS, SPACING, FONT, SHADOW } from "@/src/theme/theme";
 import { useGame } from "@/src/game/GameContext";
+import { landmarks } from "@/src/game/engine";
 import ProgressBar from "@/src/components/ProgressBar";
 
 export default function HallScreen() {
@@ -58,6 +59,8 @@ export default function HallScreen() {
               : "Fulfil contracts at the Shipping Depot to earn restoration points."}
           </Text>
         </View>
+
+        <LandmarksSection points={state.restoration_points} config={config} />
 
         <View style={styles.statsRow}>
           <StatBox icon="star-four-points" label="Level" value={`${state.level}`} />
@@ -127,6 +130,63 @@ export default function HallScreen() {
   );
 }
 
+function LandmarksSection({ points, config }: { points: number; config: any }) {
+  const items = landmarks(points, config);
+  return (
+    <View style={styles.landmarkCard} testID="landmarks-section">
+      <View style={styles.devHead}>
+        <MaterialCommunityIcons name="town-hall" size={18} color={COLORS.brandPrimary} />
+        <Text style={styles.devTitle}>Landmarks</Text>
+      </View>
+      <Text style={styles.devSub}>Restore the town skyline, milestone by milestone.</Text>
+
+      {/* skyline strip */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.skyline}>
+        {items.map((lm) => (
+          <View
+            key={lm.points}
+            style={[styles.skyTile, { backgroundColor: lm.unlocked ? COLORS.brandPrimary : COLORS.surfaceTertiary }]}
+            testID={`skyline-${lm.points}${lm.unlocked ? "-unlocked" : "-locked"}`}
+          >
+            <MaterialCommunityIcons
+              name={(lm.unlocked ? lm.icon : "lock") as any}
+              size={26}
+              color={lm.unlocked ? COLORS.onBrandPrimary : COLORS.onSurfaceTertiary}
+            />
+            <Text style={[styles.skyPts, { color: lm.unlocked ? COLORS.onBrandPrimary : COLORS.onSurfaceTertiary }]}>
+              {lm.points}
+            </Text>
+          </View>
+        ))}
+      </ScrollView>
+
+      {/* list */}
+      <View style={{ gap: SPACING.sm, marginTop: SPACING.md }}>
+        {items.map((lm) => (
+          <View key={lm.points} style={styles.lmRow} testID={`landmark-row-${lm.points}`}>
+            <View style={[styles.lmIcon, { backgroundColor: (lm.unlocked ? COLORS.success : COLORS.borderStrong) + "22" }]}>
+              <MaterialCommunityIcons
+                name={(lm.unlocked ? "check-decagram" : "lock-outline") as any}
+                size={20}
+                color={lm.unlocked ? COLORS.success : COLORS.onSurfaceTertiary}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.lmName}>{lm.landmark}</Text>
+              <Text style={styles.lmMeta}>
+                +{lm.reward_buff_pct}% rewards · +{lm.coin_bonus} coins
+              </Text>
+            </View>
+            <Text style={[styles.lmStatus, { color: lm.unlocked ? COLORS.success : COLORS.onSurfaceTertiary }]}>
+              {lm.unlocked ? "Restored" : `${lm.points - points} pts`}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function StatBox({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
     <View style={styles.statBox}>
@@ -156,6 +216,15 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: FONT.sm, color: COLORS.onSurfaceSecondary, fontWeight: "700" },
   resetBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: SPACING.sm, borderRadius: RADIUS.lg, paddingVertical: SPACING.md, borderWidth: 1.5, borderColor: COLORS.error },
   devCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.lg, marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border, ...SHADOW.soft },
+  landmarkCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.lg, marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border, ...SHADOW.soft },
+  skyline: { gap: SPACING.sm, paddingVertical: SPACING.sm },
+  skyTile: { width: 60, height: 68, borderRadius: RADIUS.md, alignItems: "center", justifyContent: "center", gap: 2 },
+  skyPts: { fontSize: FONT.sm, fontWeight: "800" },
+  lmRow: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surfaceSecondary, borderRadius: RADIUS.md, padding: SPACING.md },
+  lmIcon: { width: 38, height: 38, borderRadius: RADIUS.sm, alignItems: "center", justifyContent: "center", marginRight: SPACING.md },
+  lmName: { fontSize: FONT.base, fontWeight: "800", color: COLORS.onSurface },
+  lmMeta: { fontSize: FONT.sm, fontWeight: "600", color: COLORS.onSurfaceSecondary, marginTop: 1 },
+  lmStatus: { fontSize: FONT.sm, fontWeight: "800" },
   devHead: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
   devTitle: { fontSize: FONT.lg, fontWeight: "800", color: COLORS.onSurface },
   devSub: { fontSize: FONT.sm, color: COLORS.onSurfaceSecondary, fontWeight: "600", marginTop: 2, marginBottom: SPACING.md },
