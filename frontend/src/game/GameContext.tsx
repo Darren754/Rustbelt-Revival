@@ -277,63 +277,67 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const fulfillContract = useCallback(
     (id: string) => {
-      setState((prev) => {
-        if (!prev) return prev;
-        const cfg = configRef.current;
-        const isEmergency = prev.emergency?.id === id;
-        const contract = isEmergency ? prev.emergency! : prev.contracts.find((c) => c.id === id);
-        if (!contract) return prev;
-        if (!canFulfill(prev, contract)) {
-          haptic("error");
-          showToast("Not enough resources");
-          return prev;
-        }
-        haptic("success");
-        const depot = prev.buildings.shipping_depot;
-        const buffPct = milestoneRewardBuffPct(prev.restoration_points, cfg);
-        const reward = effectiveReward(contract, depot, cfg, buffPct);
-        const resources = { ...prev.resources } as any;
-        contract.requirements.forEach((r) => (resources[r.resource] -= r.qty));
-        resources.coins += reward.coins;
+      const cfg = configRef.current;
+      const prev = stateRef.current;
+      if (!prev) return;
+      const isEmergency = prev.emergency?.id === id;
+      const contract = isEmergency ? prev.emergency! : prev.contracts.find((c) => c.id === id);
+      if (!contract) return;
+      if (!canFulfill(prev, contract)) {
+        haptic("error");
+        showToast("Not enough resources");
+        return;
+      }
 
-        const next: GameState = {
-          ...prev,
-          resources,
-          contracts: isEmergency
-            ? prev.contracts
-            : prev.contracts.map((c) => (c.id === id ? generateBoardContract(prev.level, cfg, depot) : c)),
-          emergency: isEmergency ? null : prev.emergency,
-          emergency_next_check_ts: isEmergency
-            ? Date.now() + cfg.contracts.emergency.check_interval_seconds * 1000
-            : prev.emergency_next_check_ts,
-          restoration_points: Math.min(cfg.restoration_goal, prev.restoration_points + reward.restoration),
-        };
-        const levels = grantXp(next, reward.xp, cfg);
-        if (levels > 0) {
-          haptic("heavy");
-          setLevelUpFlash(Date.now());
+      const depot = prev.buildings.shipping_depot;
+      const buffPct = milestoneRewardBuffPct(prev.restoration_points, cfg);
+      const reward = effectiveReward(contract, depot, cfg, buffPct);
+      const resources = { ...prev.resources } as any;
+      contract.requirements.forEach((r) => (resources[r.resource] -= r.qty));
+      resources.coins += reward.coins;
+
+      const next: GameState = {
+        ...prev,
+        resources,
+        contracts: isEmergency
+          ? prev.contracts
+          : prev.contracts.map((c) => (c.id === id ? generateBoardContract(prev.level, cfg, depot) : c)),
+        emergency: isEmergency ? null : prev.emergency,
+        emergency_next_check_ts: isEmergency
+          ? Date.now() + cfg.contracts.emergency.check_interval_seconds * 1000
+          : prev.emergency_next_check_ts,
+        restoration_points: Math.min(cfg.restoration_goal, prev.restoration_points + reward.restoration),
+      };
+      const levels = grantXp(next, reward.xp, cfg);
+
+      // Restoration milestones: unlock landmark + one-time coin bonus (permanent buff derived from points).
+      let unlockedName = "";
+      let bonusTotal = 0;
+      for (const ms of cfg.restoration_milestones) {
+        if (next.restoration_points >= ms.points && !next.claimed_milestones.includes(ms.points)) {
+          next.claimed_milestones = [...next.claimed_milestones, ms.points];
+          next.resources.coins += ms.coin_bonus;
+          bonusTotal += ms.coin_bonus;
+          unlockedName = ms.landmark;
         }
-        // Restoration milestones: unlock landmark + one-time coin bonus (permanent buff derived from points).
-        let unlockedName = "";
-        let bonusTotal = 0;
-        for (const ms of cfg.restoration_milestones) {
-          if (next.restoration_points >= ms.points && !next.claimed_milestones.includes(ms.points)) {
-            next.claimed_milestones = [...next.claimed_milestones, ms.points];
-            next.resources.coins += ms.coin_bonus;
-            bonusTotal += ms.coin_bonus;
-            unlockedName = ms.landmark;
-          }
-        }
-        if (unlockedName) {
-          haptic("heavy");
-          showToast(`🏛 ${unlockedName} restored! +${bonusTotal} coins`);
-        }
-        if (!next.town_hall_restored && next.restoration_points >= cfg.restoration_goal) {
-          next.town_hall_restored = true;
-          haptic("heavy");
-        }
-        return next;
-      });
+      }
+      const justRestored = !next.town_hall_restored && next.restoration_points >= cfg.restoration_goal;
+      if (justRestored) next.town_hall_restored = true;
+
+      setState(next);
+      stateRef.current = next;
+
+      // Side-effects OUTSIDE the reducer so they fire exactly once.
+      haptic("success");
+      if (levels > 0) {
+        haptic("heavy");
+        setLevelUpFlash(Date.now());
+      }
+      if (unlockedName) {
+        haptic("heavy");
+        showToast(`🏛 ${unlockedName} restored! +${bonusTotal} coins`);
+      }
+      if (justRestored) haptic("heavy");
     },
     [showToast]
   );

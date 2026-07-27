@@ -37,7 +37,9 @@ Town HUD (`/town`), Contracts / Shipping Depot (`/contracts`), Town Hall / Resto
   - Safe migration of legacy single-`level`/`job` saves to Level-1 tracks
 - **Dev tools** (Town Hall): grant coins, grant materials, level up, force emergency, reset upgrades
 - **Strategic tiered contracts**: Basic "Local Delivery" (Scrap), Intermediate "Regional Contract" (Components), Advanced "Industrial Contract" (Finished Goods) — single-material per tier, per-unit rewards × quantity so higher tiers pay dramatically more; tier gating by unlock level; weighted random board. Rare limited-time "Emergency Repair" contract with countdown + huge reward. Depot `quality` track = bigger orders. All tiers/quantities/rewards/probabilities configurable.
-- Haptics, tooltips, toasts; testIDs throughout. Verified by testing agent (backend 9-10/10) + visual e2e (tier unlock, emergency spawn/fulfil).
+- Haptics, tooltips, toasts; testIDs throughout. Verified by testing agent (backend 9/9) + visual e2e.
+- **Restoration milestones & landmarks**: config-driven milestones (25/50/75/100) each unlock a named landmark (Old Clock Tower → Rail Station → River Bridge → Grand Town Hall), pay a one-time Coin bonus, and grant a permanent +% reward buff (coins & XP). Town Hall shows a skyline strip + landmark list. `claimed_milestones` prevents double-paying bonuses.
+- **Value-Score contract badges**: configurable weighted score (coins/xp/restoration vs materials + estimated production time) assigns varied, distinct badges — ⭐ Best Value, 💎 Premium, ⚡ Quick Cash, 🏗 Best Restoration, 📈 Best XP — one per contract, each type once; Emergency contracts never badged (keep unique orange limited-time treatment).
 
 ## Backlog
 - P1: Auth + real accounts (Google/JWT) on top of player_id; multi-device sync conflict UI
