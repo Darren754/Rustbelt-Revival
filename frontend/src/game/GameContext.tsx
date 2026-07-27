@@ -12,6 +12,7 @@ import * as Haptics from "expo-haptics";
 
 import { storage } from "@/src/utils/storage";
 import { COLORS, RADIUS, SPACING, FONT, SHADOW } from "@/src/theme/theme";
+import LandmarkModal, { LandmarkUnlock } from "@/src/components/LandmarkModal";
 import { DEFAULT_CONFIG, GameConfig } from "./config";
 import { fetchConfig, loadRemote, saveRemote } from "./api";
 import {
@@ -86,6 +87,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [now, setNow] = useState(Date.now());
   const [offlineSummary, setOfflineSummary] = useState<OfflineSummary | null>(null);
   const [levelUpFlash, setLevelUpFlash] = useState(0);
+  const [landmarkUnlock, setLandmarkUnlock] = useState<LandmarkUnlock | null>(null);
   const [toast, setToast] = useState<{ msg: string; key: number } | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
 
@@ -311,14 +313,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const levels = grantXp(next, reward.xp, cfg);
 
       // Restoration milestones: unlock landmark + one-time coin bonus (permanent buff derived from points).
-      let unlockedName = "";
+      let unlockedMs: any = null;
       let bonusTotal = 0;
       for (const ms of cfg.restoration_milestones) {
         if (next.restoration_points >= ms.points && !next.claimed_milestones.includes(ms.points)) {
           next.claimed_milestones = [...next.claimed_milestones, ms.points];
           next.resources.coins += ms.coin_bonus;
           bonusTotal += ms.coin_bonus;
-          unlockedName = ms.landmark;
+          unlockedMs = ms;
         }
       }
       const justRestored = !next.town_hall_restored && next.restoration_points >= cfg.restoration_goal;
@@ -333,11 +335,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         haptic("heavy");
         setLevelUpFlash(Date.now());
       }
-      if (unlockedName) {
+      if (unlockedMs) {
         haptic("heavy");
-        showToast(`🏛 ${unlockedName} restored! +${bonusTotal} coins`);
+        setLandmarkUnlock({ ...unlockedMs, bonus_total: bonusTotal, is_final: justRestored });
       }
-      if (justRestored) haptic("heavy");
     },
     [showToast]
   );
@@ -467,6 +468,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     <GameContext.Provider value={value}>
       <View style={{ flex: 1 }}>
         {children}
+        <LandmarkModal unlock={landmarkUnlock} onClose={() => { haptic("heavy"); setLandmarkUnlock(null); }} />
         {toast && (
           <View pointerEvents="none" style={styles.toastWrap} testID="game-toast">
             <View style={styles.toast}>

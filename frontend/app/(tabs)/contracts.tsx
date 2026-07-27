@@ -5,8 +5,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS, RADIUS, SPACING, FONT, SHADOW, RESOURCE_META } from "@/src/theme/theme";
 import { useGame } from "@/src/game/GameContext";
-import { canFulfill, contractBadges, effectiveReward, formatDuration, milestoneRewardBuffPct } from "@/src/game/engine";
-import { BadgeKey, Contract } from "@/src/game/types";
+import { canFulfill, contractBadges, effectiveReward, formatDuration, goalWinners, milestoneRewardBuffPct } from "@/src/game/engine";
+import { BadgeKey, Contract, GoalKey } from "@/src/game/types";
 import BuildingSheet from "@/src/components/BuildingSheet";
 
 const BADGE_META: Record<BadgeKey, { label: string; icon: string; color: string }> = {
@@ -17,10 +17,24 @@ const BADGE_META: Record<BadgeKey, { label: string; icon: string; color: string 
   premium: { label: "Premium", icon: "diamond-stone", color: "#7A4F9B" },
 };
 
+const GOAL_CHIPS: { key: GoalKey; label: string; icon: string }[] = [
+  { key: "coins", label: "Coins", icon: "cash-multiple" },
+  { key: "xp", label: "XP", icon: "star-four-points" },
+  { key: "restoration", label: "Restoration", icon: "city-variant" },
+];
+
+// A chosen goal highlights the contract wearing the matching badge.
+const GOAL_BADGE: Record<GoalKey, BadgeKey> = {
+  coins: "quick_cash",
+  xp: "best_xp",
+  restoration: "best_restoration",
+};
+
 export default function ContractsScreen() {
   const insets = useSafeAreaInsets();
   const { loading, state, config, now, fulfillContract, refreshContract } = useGame();
   const [depotSheet, setDepotSheet] = useState(false);
+  const [selectedGoal, setSelectedGoal] = useState<GoalKey | null>(null);
 
   if (loading || !state) {
     return (
@@ -34,6 +48,10 @@ export default function ContractsScreen() {
   const emergency = state.emergency;
   const buffPct = milestoneRewardBuffPct(state.restoration_points, config);
   const badges = contractBadges(state.contracts, depot, config, buffPct);
+  const winners = goalWinners(state.contracts, depot, config, buffPct);
+  const recommendedId = selectedGoal
+    ? (Object.keys(badges).find((id) => badges[id] === GOAL_BADGE[selectedGoal]) ?? winners[selectedGoal])
+    : null;
 
   return (
     <View style={styles.container} testID="contracts-screen">
@@ -50,6 +68,26 @@ export default function ContractsScreen() {
           <MaterialCommunityIcons name="cash-multiple" size={18} color={COLORS.brandTertiary} />
           <Text style={styles.coinText}>{Math.floor(state.resources.coins)}</Text>
         </View>
+      </View>
+
+      <View style={styles.goalBar}>
+        <Text style={styles.goalLabel}>My goal:</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.goalRow}>
+          {GOAL_CHIPS.map((g) => {
+            const active = selectedGoal === g.key;
+            return (
+              <Pressable
+                key={g.key}
+                onPress={() => setSelectedGoal(active ? null : g.key)}
+                style={[styles.goalChip, active && styles.goalChipActive]}
+                testID={`goal-chip-${g.key}`}
+              >
+                <MaterialCommunityIcons name={g.icon as any} size={16} color={active ? COLORS.onBrandPrimary : COLORS.onSurfaceSecondary} />
+                <Text style={[styles.goalChipText, active && styles.goalChipTextActive]}>{g.label}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -70,6 +108,7 @@ export default function ContractsScreen() {
             contract={c}
             reward={effectiveReward(c, depot, config, buffPct)}
             badge={badges[c.id]}
+            recommended={!!recommendedId && c.id === recommendedId}
             fulfillable={canFulfill(state, c)}
             inventory={state.resources}
             onFulfill={() => fulfillContract(c.id)}
@@ -113,10 +152,11 @@ function ReqChips({ contract, inventory }: { contract: Contract; inventory: any 
   );
 }
 
-function ContractCard({ contract, reward, badge, fulfillable, inventory, onFulfill, onRefresh }: {
+function ContractCard({ contract, reward, badge, recommended, fulfillable, inventory, onFulfill, onRefresh }: {
   contract: Contract;
   reward: { coins: number; xp: number; restoration: number };
   badge?: BadgeKey;
+  recommended?: boolean;
   fulfillable: boolean;
   inventory: any;
   onFulfill: () => void;
@@ -124,7 +164,16 @@ function ContractCard({ contract, reward, badge, fulfillable, inventory, onFulfi
 }) {
   const bm = badge ? BADGE_META[badge] : null;
   return (
-    <View style={[styles.card, { borderLeftColor: contract.color, borderLeftWidth: 5 }]} testID={`contract-${contract.id}`}>
+    <View
+      style={[styles.card, { borderLeftColor: contract.color, borderLeftWidth: 5 }, recommended && styles.cardRecommended]}
+      testID={`contract-${contract.id}`}
+    >
+      {recommended && (
+        <View style={styles.recommendTag} testID={`contract-recommended-${contract.id}`}>
+          <MaterialCommunityIcons name="target" size={13} color={COLORS.onBrandPrimary} />
+          <Text style={styles.recommendText}>Best for your goal</Text>
+        </View>
+      )}
       {bm && (
         <View style={[styles.badge, { backgroundColor: bm.color }]} testID={`contract-badge-${badge}`}>
           <MaterialCommunityIcons name={bm.icon as any} size={13} color={"#FFFFFF"} />
@@ -231,6 +280,16 @@ const styles = StyleSheet.create({
   upgradeText: { color: COLORS.onBrandPrimary, fontWeight: "800", fontSize: FONT.sm },
   scroll: { padding: SPACING.lg, paddingBottom: SPACING["3xl"], gap: SPACING.md },
   card: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING.lg, borderWidth: 1, borderColor: COLORS.border, ...SHADOW.card },
+  cardRecommended: { borderColor: COLORS.brandPrimary, borderWidth: 2 },
+  recommendTag: { position: "absolute", top: -9, left: 14, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: COLORS.brandPrimary, borderRadius: RADIUS.pill, paddingHorizontal: SPACING.md, paddingVertical: 4, ...SHADOW.soft },
+  recommendText: { color: COLORS.onBrandPrimary, fontWeight: "800", fontSize: 11 },
+  goalBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, gap: SPACING.sm },
+  goalLabel: { fontSize: FONT.sm, fontWeight: "800", color: COLORS.onSurfaceSecondary, flexShrink: 0 },
+  goalRow: { gap: SPACING.sm, paddingRight: SPACING.lg },
+  goalChip: { flexDirection: "row", alignItems: "center", gap: 5, height: 36, paddingHorizontal: SPACING.md, borderRadius: RADIUS.pill, backgroundColor: COLORS.surfaceSecondary, borderWidth: 1, borderColor: COLORS.border, flexShrink: 0 },
+  goalChipActive: { backgroundColor: COLORS.brandPrimary, borderColor: COLORS.brandPrimary },
+  goalChipText: { fontSize: FONT.sm, fontWeight: "800", color: COLORS.onSurfaceSecondary },
+  goalChipTextActive: { color: COLORS.onBrandPrimary },
   badge: { position: "absolute", top: -9, right: 14, flexDirection: "row", alignItems: "center", gap: 4, borderRadius: RADIUS.pill, paddingHorizontal: SPACING.md, paddingVertical: 4, ...SHADOW.soft },
   badgeText: { color: "#FFFFFF", fontWeight: "800", fontSize: 11, letterSpacing: 0.3 },
   emergencyCard: { borderColor: "#D9822B", borderWidth: 2, backgroundColor: "#FBF3E9" },

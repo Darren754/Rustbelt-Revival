@@ -52,7 +52,7 @@ export const DEFAULT_CONFIG = {
         material: "scrap",
         unlock_level: 1,
         qty_min: 8, qty_max: 20,
-        coin_per: [0.5, 0.8], xp_per: [0.3, 0.5], rest_per: [0.1, 0.2],
+        coin_per: [0.6, 1.0], xp_per: [0.3, 0.5], rest_per: [0.1, 0.2],
         label: "Local Delivery", difficulty: "Easy", color: "#4A7C59",
       },
       intermediate: {
@@ -88,11 +88,11 @@ export const DEFAULT_CONFIG = {
     // Efficiency = Score / Effort. Emergency contracts are never badged.
     value_score: {
       w_coins: 1.0,
-      w_xp: 1.2,
-      w_restoration: 8.0,
+      w_xp: 1.0,
+      w_restoration: 6.0,
       w_materials: 1.0,
-      w_time: 0.2,
-      premium_threshold: 380, // Value Score above which a contract counts as "Premium"
+      w_time: 0.25,
+      premium_threshold: 340, // Value Score above which a contract counts as "Premium"
       unit_time_seconds: { scrap: 10, components: 40, finished_goods: 110 },
     },
   },

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -9,7 +9,6 @@ import { useGame } from "@/src/game/GameContext";
 import HudHeader from "@/src/components/HudHeader";
 import BuildingSheet from "@/src/components/BuildingSheet";
 import WelcomeBackModal from "@/src/components/WelcomeBackModal";
-import CelebrationModal from "@/src/components/CelebrationModal";
 import ProgressBar from "@/src/components/ProgressBar";
 import {
   buildingLevel,
@@ -27,14 +26,6 @@ export default function TownScreen() {
   const router = useRouter();
   const { loading, state, config, now, markTutorialSeen } = useGame();
   const [sheet, setSheet] = useState<"scrap_yard" | "machine_shop" | null>(null);
-  const [celebrate, setCelebrate] = useState(false);
-  const prevRestored = useRef<boolean>(false);
-
-  useEffect(() => {
-    if (!state) return;
-    if (state.town_hall_restored && !prevRestored.current) setCelebrate(true);
-    prevRestored.current = state.town_hall_restored;
-  }, [state?.town_hall_restored]);
 
   if (loading || !state) {
     return (
@@ -133,7 +124,6 @@ export default function TownScreen() {
 
       <BuildingSheet building={sheet} onClose={() => setSheet(null)} />
       <WelcomeBackModal />
-      <CelebrationModal visible={celebrate} onClose={() => setCelebrate(false)} />
     </View>
   );
 }

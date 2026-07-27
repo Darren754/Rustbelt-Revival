@@ -125,16 +125,22 @@ export function landmarks(restorationPoints: number, cfg: GameConfig): LandmarkV
 
 // ---- "Value Score" contract badges (configurable weights; emergency excluded) ----
 export type BadgeKey = "best_value" | "quick_cash" | "best_restoration" | "best_xp" | "premium";
+export type GoalKey = "coins" | "xp" | "restoration";
 
-export function contractBadges(
-  contracts: Contract[],
-  depot: ShippingDepotState,
-  cfg: GameConfig,
-  buffPct = 0
-): Record<string, BadgeKey> {
+interface ScoredRow {
+  id: string;
+  coins: number;
+  xp: number;
+  rest: number;
+  estTime: number;
+  effort: number;
+  score: number;
+  efficiency: number;
+}
+
+function scoreRows(contracts: Contract[], depot: ShippingDepotState, cfg: GameConfig, buffPct: number): ScoredRow[] {
   const vs = cfg.contracts.value_score as any;
-  if (contracts.length < 2) return {};
-  const rows = contracts.map((c) => {
+  return contracts.map((c) => {
     const eff = effectiveReward(c, depot, cfg, buffPct);
     const materials = c.requirements.reduce((a, r) => a + r.qty, 0);
     const estTime = Math.max(
@@ -145,26 +151,59 @@ export function contractBadges(
     const score = vs.w_coins * eff.coins + vs.w_xp * eff.xp + vs.w_restoration * eff.restoration;
     return { id: c.id, coins: eff.coins, xp: eff.xp, rest: eff.restoration, estTime, effort, score, efficiency: score / effort };
   });
-  const argmaxId = (fn: (r: (typeof rows)[number]) => number) =>
-    rows.reduce((best, r) => (fn(r) > fn(best) ? r : best)).id;
-  const maxScore = Math.max(...rows.map((r) => r.score));
+}
 
-  // Priority order — Best Value always shown first; Premium is a rare flavour tag.
-  const candidates: [BadgeKey, string, boolean][] = [
-    ["best_value", argmaxId((r) => r.efficiency), true],
-    ["premium", argmaxId((r) => r.score), maxScore >= vs.premium_threshold],
-    ["quick_cash", argmaxId((r) => r.coins / r.estTime), true],
-    ["best_restoration", argmaxId((r) => r.rest / r.effort), true],
-    ["best_xp", argmaxId((r) => r.xp / r.estTime), true],
-  ];
+export function contractBadges(
+  contracts: Contract[],
+  depot: ShippingDepotState,
+  cfg: GameConfig,
+  buffPct = 0
+): Record<string, BadgeKey> {
+  const vs = cfg.contracts.value_score as any;
+  if (contracts.length < 2) return {};
+  const rows = scoreRows(contracts, depot, cfg, buffPct);
   const result: Record<string, BadgeKey> = {};
-  const usedBadge = new Set<BadgeKey>();
-  for (const [badge, id, ok] of candidates) {
-    if (!ok || result[id] || usedBadge.has(badge)) continue;
-    result[id] = badge;
-    usedBadge.add(badge);
-  }
+  const remaining = new Set(rows.map((r) => r.id));
+
+  const pick = (fn: (r: ScoredRow) => number): ScoredRow | null => {
+    let best: ScoredRow | null = null;
+    for (const r of rows) {
+      if (!remaining.has(r.id)) continue;
+      if (!best || fn(r) > fn(best)) best = r;
+    }
+    return best;
+  };
+  const assign = (badge: BadgeKey, r: ScoredRow | null) => {
+    if (!r) return;
+    result[r.id] = badge;
+    remaining.delete(r.id);
+  };
+
+  // Each badge goes to the best REMAINING contract, so a 3-card board shows variety.
+  assign("best_value", pick((r) => r.efficiency));
+  const premium = pick((r) => r.score);
+  if (premium && premium.score >= vs.premium_threshold) assign("premium", premium);
+  assign("quick_cash", pick((r) => r.coins / r.estTime));
+  assign("best_restoration", pick((r) => r.rest / r.effort));
+  assign("best_xp", pick((r) => r.xp / r.estTime));
   return result;
+}
+
+// Best contract for each player goal (global argmax — used by the goal picker).
+export function goalWinners(
+  contracts: Contract[],
+  depot: ShippingDepotState,
+  cfg: GameConfig,
+  buffPct = 0
+): Record<GoalKey, string | null> {
+  if (!contracts.length) return { coins: null, xp: null, restoration: null };
+  const rows = scoreRows(contracts, depot, cfg, buffPct);
+  const argmax = (fn: (r: ScoredRow) => number) => rows.reduce((b, r) => (fn(r) > fn(b) ? r : b)).id;
+  return {
+    coins: argmax((r) => r.coins / r.estTime),
+    xp: argmax((r) => r.xp / r.estTime),
+    restoration: argmax((r) => r.rest / r.effort),
+  };
 }
 
 // ---- xp / level ----
