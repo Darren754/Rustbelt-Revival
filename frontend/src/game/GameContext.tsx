@@ -18,6 +18,7 @@ import { fetchConfig, loadRemote, saveRemote } from "./api";
 import {
   canFulfill,
   computeOffline,
+  createAnalytics,
   createDefaultState,
   effectiveReward,
   generateBoardContract,
@@ -28,6 +29,7 @@ import {
   milestoneRewardBuffPct,
   normalizeState,
   readyScrap,
+  scrapCapacity,
   tickContracts,
   tickMachineShop,
   trackCost,
@@ -95,6 +97,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const stateRef = reactUseRef<GameState | null>(null);
   const playerIdRef = reactUseRef<string | null>(null);
   const remoteSaveTimer = reactUseRef<any>(null);
+  const analyticsAccumRef = reactUseRef({ idle_ms: 0, slot_active_ms: 0, storage_full_inc: 0, scrap_full: false, last_ts: Date.now() });
 
   configRef.current = config;
   stateRef.current = state;
@@ -151,6 +154,22 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setNow(t);
       const cur = stateRef.current;
       if (!cur) return;
+      // analytics time accumulation (ref only — folded into state every 2s)
+      const acc = analyticsAccumRef.current;
+      const dt = Math.min(2000, t - acc.last_ts);
+      acc.last_ts = t;
+      const jobs = cur.buildings.machine_shop.jobs.length;
+      if (jobs === 0) acc.idle_ms += dt;
+      else acc.slot_active_ms += jobs * dt;
+      const ready = readyScrap(cur.buildings.scrap_yard, configRef.current, t);
+      const cap = scrapCapacity(cur.buildings.scrap_yard, configRef.current);
+      if (ready >= cap) {
+        if (!acc.scrap_full) {
+          acc.storage_full_inc += 1;
+          acc.scrap_full = true;
+        }
+      } else acc.scrap_full = false;
+
       let s = tickMachineShop(cur, configRef.current, t);
       s = tickContracts(s, configRef.current, t);
       if (s !== cur) {
@@ -161,20 +180,56 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(id);
   }, []);
 
-  // ---- persistence ----
-  const persist = useCallback((s: GameState) => {
-    const withSeen = { ...s, last_seen_ts: Date.now() };
-    storage.setItem(SAVE_KEY, withSeen as any);
-    if (remoteSaveTimer.current) clearTimeout(remoteSaveTimer.current);
-    remoteSaveTimer.current = setTimeout(() => {
-      const pid = playerIdRef.current;
-      if (pid) saveRemote(pid, withSeen);
-    }, 2500);
+  // ---- analytics fold (ref -> state every 2s; also detects resource/level firsts) ----
+  useEffect(() => {
+    const id = setInterval(() => {
+      const acc = analyticsAccumRef.current;
+      setState((prev) => {
+        if (!prev) return prev;
+        const a = prev.analytics;
+        const rel = Date.now() - a.session_start_ts;
+        const firsts = { ...a.firsts };
+        if (firsts.scrap == null && prev.resources.scrap > 0) firsts.scrap = rel;
+        if (firsts.component == null && prev.resources.components > 0) firsts.component = rel;
+        if (firsts.finished_good == null && prev.resources.finished_goods > 0) firsts.finished_good = rel;
+        if (firsts.level2 == null && prev.level >= 2) firsts.level2 = rel;
+        if (!acc.idle_ms && !acc.slot_active_ms && !acc.storage_full_inc && firsts === a.firsts) return prev;
+        const next: GameState = {
+          ...prev,
+          analytics: {
+            ...a,
+            firsts,
+            machine_idle_ms: a.machine_idle_ms + acc.idle_ms,
+            slot_active_ms: a.slot_active_ms + acc.slot_active_ms,
+            storage_full_count: a.storage_full_count + acc.storage_full_inc,
+          },
+        };
+        acc.idle_ms = 0;
+        acc.slot_active_ms = 0;
+        acc.storage_full_inc = 0;
+        stateRef.current = next;
+        return next;
+      });
+    }, 2000);
+    return () => clearInterval(id);
   }, []);
 
+  // ---- persistence: local on change; remote on a fixed interval (decoupled from
+  // change frequency so analytics ticks never starve cloud saves) + on background ----
   useEffect(() => {
-    if (!loading && state) persist(state);
-  }, [state, loading, persist]);
+    if (!loading && state) {
+      storage.setItem(SAVE_KEY, { ...state, last_seen_ts: Date.now() } as any);
+    }
+  }, [state, loading]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const s = stateRef.current;
+      const pid = playerIdRef.current;
+      if (s && pid) saveRemote(pid, { ...s, last_seen_ts: Date.now() });
+    }, 8000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
@@ -267,10 +322,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         haptic("success");
         const nb: any = { ...b, upgrades: { ...b.upgrades, [track]: level + 1 } };
         if (building === "scrap_yard" && track === "speed") nb.baseline_ts = Date.now();
+        const rel = Date.now() - prev.analytics.session_start_ts;
         return {
           ...prev,
           resources: { ...prev.resources, coins: prev.resources.coins - cost },
           buildings: { ...prev.buildings, [building]: nb },
+          analytics: { ...prev.analytics, firsts: { ...prev.analytics.firsts, upgrade: prev.analytics.firsts.upgrade ?? rel } },
         };
       });
     },
@@ -315,16 +372,37 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       // Restoration milestones: unlock landmark + one-time coin bonus (permanent buff derived from points).
       let unlockedMs: any = null;
       let bonusTotal = 0;
+      const crossedPoints: number[] = [];
       for (const ms of cfg.restoration_milestones) {
         if (next.restoration_points >= ms.points && !next.claimed_milestones.includes(ms.points)) {
           next.claimed_milestones = [...next.claimed_milestones, ms.points];
           next.resources.coins += ms.coin_bonus;
           bonusTotal += ms.coin_bonus;
           unlockedMs = ms;
+          crossedPoints.push(ms.points);
         }
       }
       const justRestored = !next.town_hall_restored && next.restoration_points >= cfg.restoration_goal;
       if (justRestored) next.town_hall_restored = true;
+
+      // analytics (event-driven)
+      const rel = Date.now() - next.analytics.session_start_ts;
+      const mt = { ...next.analytics.milestone_times };
+      crossedPoints.forEach((p) => (mt[String(p)] = rel));
+      next.analytics = {
+        ...next.analytics,
+        firsts: { ...next.analytics.firsts, contract: next.analytics.firsts.contract ?? rel },
+        contracts_by_tier: {
+          ...next.analytics.contracts_by_tier,
+          [contract.tier]: next.analytics.contracts_by_tier[contract.tier] + 1,
+        },
+        earned: {
+          coins: next.analytics.earned.coins + reward.coins + bonusTotal,
+          xp: next.analytics.earned.xp + reward.xp,
+          restoration: next.analytics.earned.restoration + reward.restoration,
+        },
+        milestone_times: mt,
+      };
 
       setState(next);
       stateRef.current = next;
@@ -352,6 +430,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       return {
         ...prev,
         contracts: prev.contracts.map((c) => (c.id === id ? generateBoardContract(prev.level, cfg, depot) : c)),
+        analytics: { ...prev.analytics, contract_refreshes: prev.analytics.contract_refreshes + 1 },
       };
     });
   }, []);

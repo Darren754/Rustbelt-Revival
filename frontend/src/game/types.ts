@@ -54,6 +54,25 @@ export interface Contract {
   expires_at: number | null; // UTC epoch ms — only emergency contracts expire
 }
 
+export interface Analytics {
+  session_start_ts: number; // UTC epoch ms tracking began
+  firsts: {
+    scrap: number | null; // elapsed ms from session start (null = not yet)
+    component: number | null;
+    finished_good: number | null;
+    contract: number | null;
+    upgrade: number | null;
+    level2: number | null;
+  };
+  milestone_times: Record<string, number>; // restoration points -> elapsed ms
+  contracts_by_tier: { basic: number; intermediate: number; advanced: number; emergency: number };
+  earned: { coins: number; xp: number; restoration: number };
+  contract_refreshes: number;
+  storage_full_count: number;
+  machine_idle_ms: number;
+  slot_active_ms: number; // summed across active slots (slot-milliseconds)
+}
+
 export interface GameState {
   resources: Resources;
   level: number;
@@ -71,6 +90,7 @@ export interface GameState {
   emergency_next_check_ts: number; // UTC epoch ms — next spawn roll
   last_seen_ts: number; // UTC epoch ms
   tutorial_seen: boolean;
+  analytics: Analytics;
 }
 
 export interface OfflineSummary {

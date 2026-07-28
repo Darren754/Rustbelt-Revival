@@ -231,6 +231,20 @@ function randRange(range: number[]): number {
 
 const DEFAULT_DEPOT: ShippingDepotState = { upgrades: { rewards: 1, quality: 1 } };
 
+export function createAnalytics(now: number): import("./types").Analytics {
+  return {
+    session_start_ts: now,
+    firsts: { scrap: null, component: null, finished_good: null, contract: null, upgrade: null, level2: null },
+    milestone_times: {},
+    contracts_by_tier: { basic: 0, intermediate: 0, advanced: 0, emergency: 0 },
+    earned: { coins: 0, xp: 0, restoration: 0 },
+    contract_refreshes: 0,
+    storage_full_count: 0,
+    machine_idle_ms: 0,
+    slot_active_ms: 0,
+  };
+}
+
 export type TierKey = "basic" | "intermediate" | "advanced";
 
 // Which tiers the player has unlocked, in board display order.
@@ -329,6 +343,7 @@ export function createDefaultState(now: number, cfg: GameConfig): GameState {
     emergency_next_check_ts: now + cfg.contracts.emergency.check_interval_seconds * 1000,
     last_seen_ts: now,
     tutorial_seen: false,
+    analytics: createAnalytics(now),
   };
 }
 
@@ -381,6 +396,9 @@ export function normalizeState(raw: any, now: number, cfg: GameConfig): GameStat
     emergency_next_check_ts:
       typeof raw.emergency_next_check_ts === "number" ? raw.emergency_next_check_ts : def.emergency_next_check_ts,
     claimed_milestones: Array.isArray(raw.claimed_milestones) ? raw.claimed_milestones : [],
+    analytics: raw.analytics && typeof raw.analytics === "object"
+      ? { ...def.analytics, ...raw.analytics, firsts: { ...def.analytics.firsts, ...(raw.analytics.firsts || {}) }, contracts_by_tier: { ...def.analytics.contracts_by_tier, ...(raw.analytics.contracts_by_tier || {}) }, earned: { ...def.analytics.earned, ...(raw.analytics.earned || {}) }, milestone_times: raw.analytics.milestone_times || {} }
+      : def.analytics,
   };
 }
 
@@ -469,4 +487,62 @@ export function formatDuration(ms: number): string {
   const h = Math.floor(m / 60);
   const rm = m % 60;
   return rm ? `${h}h ${rm}m` : `${h}h`;
+}
+
+// ---- analytics export (JSON / CSV) ----
+function fmtMs(ms: number | null): string {
+  return ms == null ? "—" : formatDuration(ms);
+}
+export function analyticsSummary(state: GameState, cfg: GameConfig) {
+  const a = state.analytics;
+  const now = Date.now();
+  return {
+    session_duration_ms: now - a.session_start_ts,
+    level: state.level,
+    restoration_points: state.restoration_points,
+    resources: state.resources,
+    firsts_ms: a.firsts,
+    milestone_times_ms: a.milestone_times,
+    contracts_by_tier: a.contracts_by_tier,
+    contracts_total:
+      a.contracts_by_tier.basic + a.contracts_by_tier.intermediate + a.contracts_by_tier.advanced + a.contracts_by_tier.emergency,
+    earned: a.earned,
+    contract_refreshes: a.contract_refreshes,
+    storage_full_count: a.storage_full_count,
+    machine_idle_ms: a.machine_idle_ms,
+    slot_active_ms: a.slot_active_ms,
+  };
+}
+export function analyticsToJSON(state: GameState, cfg: GameConfig): string {
+  return JSON.stringify(analyticsSummary(state, cfg), null, 2);
+}
+export function analyticsToCSV(state: GameState, cfg: GameConfig): string {
+  const s = analyticsSummary(state, cfg);
+  const rows: [string, string | number][] = [
+    ["session_duration", fmtMs(s.session_duration_ms)],
+    ["level", s.level],
+    ["restoration_points", s.restoration_points],
+    ["first_scrap", fmtMs(s.firsts_ms.scrap)],
+    ["first_component", fmtMs(s.firsts_ms.component)],
+    ["first_finished_good", fmtMs(s.firsts_ms.finished_good)],
+    ["first_contract", fmtMs(s.firsts_ms.contract)],
+    ["first_upgrade", fmtMs(s.firsts_ms.upgrade)],
+    ["reach_level_2", fmtMs(s.firsts_ms.level2)],
+    ["contracts_basic", s.contracts_by_tier.basic],
+    ["contracts_intermediate", s.contracts_by_tier.intermediate],
+    ["contracts_advanced", s.contracts_by_tier.advanced],
+    ["contracts_emergency", s.contracts_by_tier.emergency],
+    ["contracts_total", s.contracts_total],
+    ["coins_earned", s.earned.coins],
+    ["xp_earned", s.earned.xp],
+    ["restoration_earned", s.earned.restoration],
+    ["contract_refreshes", s.contract_refreshes],
+    ["storage_full_count", s.storage_full_count],
+    ["machine_idle", fmtMs(s.machine_idle_ms)],
+    ["slot_active", fmtMs(s.slot_active_ms)],
+  ];
+  for (const m of cfg.restoration_milestones) {
+    rows.push([`milestone_${m.points}`, fmtMs(s.milestone_times_ms[String(m.points)] ?? null)]);
+  }
+  return "metric,value\n" + rows.map(([k, v]) => `${k},${v}`).join("\n");
 }
