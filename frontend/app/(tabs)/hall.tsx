@@ -8,6 +8,7 @@ import { COLORS, RADIUS, SPACING, FONT, SHADOW } from "@/src/theme/theme";
 import { useGame } from "@/src/game/GameContext";
 import { landmarks } from "@/src/game/engine";
 import ProgressBar from "@/src/components/ProgressBar";
+import AnalyticsPanel from "@/src/components/AnalyticsPanel";
 
 export default function HallScreen() {
   const insets = useSafeAreaInsets();
@@ -98,6 +99,8 @@ export default function HallScreen() {
             <Text style={styles.devBtnText}>Spawn Emergency Contract</Text>
           </Pressable>
         </View>
+
+        <AnalyticsPanel />
 
         <Pressable style={styles.resetBtn} onPress={() => setConfirmReset(true)} testID="reset-game-button">
           <MaterialCommunityIcons name="restart" size={18} color={COLORS.error} />

@@ -56,6 +56,8 @@ export interface Contract {
 
 export interface Analytics {
   session_start_ts: number; // UTC epoch ms tracking began
+  session_start_level: number; // player level when tracking began
+  session_start_restoration: number; // restoration points when tracking began
   firsts: {
     scrap: number | null; // elapsed ms from session start (null = not yet)
     component: number | null;
@@ -66,7 +68,11 @@ export interface Analytics {
   };
   milestone_times: Record<string, number>; // restoration points -> elapsed ms
   contracts_by_tier: { basic: number; intermediate: number; advanced: number; emergency: number };
-  earned: { coins: number; xp: number; restoration: number };
+  earned: { coins: number; xp: number; restoration: number }; // coins here = contract coins only
+  milestone_coins: number; // one-time coin rewards from restoration milestones
+  spent: { coins: number }; // coins spent on upgrades
+  produced: { scrap: number; components: number; finished_goods: number }; // materials gained this session
+  jobs_completed: { component: number; finished: number }; // machine shop jobs by recipe
   contract_refreshes: number;
   storage_full_count: number;
   machine_idle_ms: number;

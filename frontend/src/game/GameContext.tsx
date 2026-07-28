@@ -70,6 +70,7 @@ interface GameContextValue {
   grantLevel: () => void;
   forceEmergency: () => void;
   resetUpgrades: () => void;
+  resetTracking: () => void;
   showToast: (msg: string) => void;
   playerId: string | null;
 }
@@ -262,6 +263,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         resources: { ...prev.resources, scrap: prev.resources.scrap + ready },
         buildings: { ...prev.buildings, scrap_yard: { ...sy, baseline_ts: Date.now() } },
+        analytics: { ...prev.analytics, produced: { ...prev.analytics.produced, scrap: prev.analytics.produced.scrap + ready } },
       };
     });
   }, [showToast]);
@@ -327,7 +329,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           resources: { ...prev.resources, coins: prev.resources.coins - cost },
           buildings: { ...prev.buildings, [building]: nb },
-          analytics: { ...prev.analytics, firsts: { ...prev.analytics.firsts, upgrade: prev.analytics.firsts.upgrade ?? rel } },
+          analytics: {
+            ...prev.analytics,
+            firsts: { ...prev.analytics.firsts, upgrade: prev.analytics.firsts.upgrade ?? rel },
+            spent: { ...prev.analytics.spent, coins: prev.analytics.spent.coins + cost },
+          },
         };
       });
     },
@@ -397,10 +403,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           [contract.tier]: next.analytics.contracts_by_tier[contract.tier] + 1,
         },
         earned: {
-          coins: next.analytics.earned.coins + reward.coins + bonusTotal,
+          coins: next.analytics.earned.coins + reward.coins,
           xp: next.analytics.earned.xp + reward.xp,
           restoration: next.analytics.earned.restoration + reward.restoration,
         },
+        milestone_coins: next.analytics.milestone_coins + bonusTotal,
         milestone_times: mt,
       };
 
@@ -528,18 +535,32 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setOfflineSummary(null);
   }, []);
 
+  const resetTracking = useCallback(() => {
+    const nowTs = Date.now();
+    // reset accumulator so idle/active/full detection restarts cleanly
+    analyticsAccumRef.current = { idle_ms: 0, slot_active_ms: 0, storage_full_inc: 0, scrap_full: false, last_ts: nowTs };
+    setState((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, analytics: createAnalytics(nowTs, prev.level, prev.restoration_points) };
+      stateRef.current = next;
+      return next;
+    });
+    haptic("success");
+    showToast("Tracking session reset");
+  }, [showToast]);
+
   const value = useMemo<GameContextValue>(
     () => ({
       loading, now, config, state, offlineSummary, levelUpFlash,
       clearOfflineSummary, collectScrap, startJob, upgradeTrack, fulfillContract,
       refreshContract, markTutorialSeen, resetGame, grantCoins, grantMaterials, grantLevel,
-      forceEmergency, resetUpgrades, showToast, playerId,
+      forceEmergency, resetUpgrades, resetTracking, showToast, playerId,
     }),
     [
       loading, now, config, state, offlineSummary, levelUpFlash,
       clearOfflineSummary, collectScrap, startJob, upgradeTrack, fulfillContract,
       refreshContract, markTutorialSeen, resetGame, grantCoins, grantMaterials, grantLevel,
-      forceEmergency, resetUpgrades, showToast, playerId,
+      forceEmergency, resetUpgrades, resetTracking, showToast, playerId,
     ]
   );
 

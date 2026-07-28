@@ -231,13 +231,19 @@ function randRange(range: number[]): number {
 
 const DEFAULT_DEPOT: ShippingDepotState = { upgrades: { rewards: 1, quality: 1 } };
 
-export function createAnalytics(now: number): import("./types").Analytics {
+export function createAnalytics(now: number, level = 1, restoration = 0): import("./types").Analytics {
   return {
     session_start_ts: now,
+    session_start_level: level,
+    session_start_restoration: restoration,
     firsts: { scrap: null, component: null, finished_good: null, contract: null, upgrade: null, level2: null },
     milestone_times: {},
     contracts_by_tier: { basic: 0, intermediate: 0, advanced: 0, emergency: 0 },
     earned: { coins: 0, xp: 0, restoration: 0 },
+    milestone_coins: 0,
+    spent: { coins: 0 },
+    produced: { scrap: 0, components: 0, finished_goods: 0 },
+    jobs_completed: { component: 0, finished: 0 },
     contract_refreshes: 0,
     storage_full_count: 0,
     machine_idle_ms: 0,
@@ -397,7 +403,7 @@ export function normalizeState(raw: any, now: number, cfg: GameConfig): GameStat
       typeof raw.emergency_next_check_ts === "number" ? raw.emergency_next_check_ts : def.emergency_next_check_ts,
     claimed_milestones: Array.isArray(raw.claimed_milestones) ? raw.claimed_milestones : [],
     analytics: raw.analytics && typeof raw.analytics === "object"
-      ? { ...def.analytics, ...raw.analytics, firsts: { ...def.analytics.firsts, ...(raw.analytics.firsts || {}) }, contracts_by_tier: { ...def.analytics.contracts_by_tier, ...(raw.analytics.contracts_by_tier || {}) }, earned: { ...def.analytics.earned, ...(raw.analytics.earned || {}) }, milestone_times: raw.analytics.milestone_times || {} }
+      ? { ...def.analytics, ...raw.analytics, firsts: { ...def.analytics.firsts, ...(raw.analytics.firsts || {}) }, contracts_by_tier: { ...def.analytics.contracts_by_tier, ...(raw.analytics.contracts_by_tier || {}) }, earned: { ...def.analytics.earned, ...(raw.analytics.earned || {}) }, spent: { ...def.analytics.spent, ...(raw.analytics.spent || {}) }, produced: { ...def.analytics.produced, ...(raw.analytics.produced || {}) }, jobs_completed: { ...def.analytics.jobs_completed, ...(raw.analytics.jobs_completed || {}) }, milestone_times: raw.analytics.milestone_times || {} }
       : def.analytics,
   };
 }
@@ -409,17 +415,26 @@ export function tickMachineShop(state: GameState, cfg: GameConfig, now: number):
   const remaining = [] as typeof ms.jobs;
   let changed = false;
   const resources = { ...state.resources } as any;
+  const produced = { ...state.analytics.produced };
+  const jobs_completed = { ...state.analytics.jobs_completed };
   for (const job of ms.jobs) {
     if (now >= job.start_ts + job.duration_ms) {
       const r = cfg.machine_shop[job.type];
       resources[r.out] += r.out_qty;
+      (produced as any)[r.out] += r.out_qty;
+      jobs_completed[job.type] += 1;
       changed = true;
     } else {
       remaining.push(job);
     }
   }
   if (!changed) return state;
-  return { ...state, resources, buildings: { ...state.buildings, machine_shop: { ...ms, jobs: remaining } } };
+  return {
+    ...state,
+    resources,
+    buildings: { ...state.buildings, machine_shop: { ...ms, jobs: remaining } },
+    analytics: { ...state.analytics, produced, jobs_completed },
+  };
 }
 
 // ---- offline production (UTC epoch ms; capped by config.offline_cap_seconds) ----
@@ -490,59 +505,128 @@ export function formatDuration(ms: number): string {
 }
 
 // ---- analytics export (JSON / CSV) ----
+const NOT_REACHED = "Not reached";
 function fmtMs(ms: number | null): string {
-  return ms == null ? "—" : formatDuration(ms);
+  return ms == null ? NOT_REACHED : formatDuration(ms);
 }
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
 export function analyticsSummary(state: GameState, cfg: GameConfig) {
   const a = state.analytics;
   const now = Date.now();
+  const duration = now - a.session_start_ts;
+  const total =
+    a.contracts_by_tier.basic + a.contracts_by_tier.intermediate + a.contracts_by_tier.advanced + a.contracts_by_tier.emergency;
+  const maxSlots = machineSlots(state.buildings.machine_shop, cfg);
+  const slotUtilPct = duration > 0 && maxSlots > 0 ? Math.min(100, (a.slot_active_ms / (duration * maxSlots)) * 100) : 0;
+  const netCoins = a.earned.coins + a.milestone_coins - a.spent.coins;
+  const avg = (v: number) => (total > 0 ? round1(v / total) : 0);
   return {
-    session_duration_ms: now - a.session_start_ts,
-    level: state.level,
-    restoration_points: state.restoration_points,
-    resources: state.resources,
+    version: 1,
+    generated_at_iso: new Date(now).toISOString(),
+    session: {
+      start_ts: a.session_start_ts,
+      start_iso: new Date(a.session_start_ts).toISOString(),
+      duration_ms: duration,
+      start_level: a.session_start_level,
+      start_restoration: a.session_start_restoration,
+    },
     firsts_ms: a.firsts,
-    milestone_times_ms: a.milestone_times,
-    contracts_by_tier: a.contracts_by_tier,
-    contracts_total:
-      a.contracts_by_tier.basic + a.contracts_by_tier.intermediate + a.contracts_by_tier.advanced + a.contracts_by_tier.emergency,
-    earned: a.earned,
-    contract_refreshes: a.contract_refreshes,
-    storage_full_count: a.storage_full_count,
-    machine_idle_ms: a.machine_idle_ms,
-    slot_active_ms: a.slot_active_ms,
+    economy: {
+      coins_earned: a.earned.coins,
+      milestone_coins: a.milestone_coins,
+      coins_spent: a.spent.coins,
+      net_coins: netCoins,
+      xp_earned: a.earned.xp,
+      restoration_earned: a.earned.restoration,
+      scrap_collected: a.produced.scrap,
+      components_produced: a.produced.components,
+      finished_goods_produced: a.produced.finished_goods,
+    },
+    contracts: {
+      total,
+      by_tier: a.contracts_by_tier,
+      emergency: a.contracts_by_tier.emergency,
+      refreshes: a.contract_refreshes,
+      avg_coins: avg(a.earned.coins),
+      avg_xp: avg(a.earned.xp),
+      avg_restoration: avg(a.earned.restoration),
+    },
+    production: {
+      storage_full_count: a.storage_full_count,
+      machine_idle_ms: a.machine_idle_ms,
+      machine_active_ms: a.slot_active_ms,
+      slot_utilization_pct: round1(slotUtilPct),
+      jobs_completed: a.jobs_completed,
+    },
+    milestones: {
+      unlock_times_ms: a.milestone_times,
+      milestone_coins_received: a.milestone_coins,
+      current_reward_buff_pct: milestoneRewardBuffPct(state.restoration_points, cfg),
+    },
+    game_progress: {
+      level: state.level,
+      restoration_points: state.restoration_points,
+      resources: state.resources,
+    },
   };
 }
+
 export function analyticsToJSON(state: GameState, cfg: GameConfig): string {
   return JSON.stringify(analyticsSummary(state, cfg), null, 2);
 }
+
+// Escape a CSV cell per RFC 4180 (wrap in quotes + double inner quotes when needed).
+function csvCell(v: string | number): string {
+  const s = String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 export function analyticsToCSV(state: GameState, cfg: GameConfig): string {
   const s = analyticsSummary(state, cfg);
   const rows: [string, string | number][] = [
-    ["session_duration", fmtMs(s.session_duration_ms)],
-    ["level", s.level],
-    ["restoration_points", s.restoration_points],
+    ["session_start", s.session.start_iso],
+    ["session_duration", fmtMs(s.session.duration_ms)],
+    ["session_start_level", s.session.start_level],
+    ["session_start_restoration", s.session.start_restoration],
     ["first_scrap", fmtMs(s.firsts_ms.scrap)],
     ["first_component", fmtMs(s.firsts_ms.component)],
     ["first_finished_good", fmtMs(s.firsts_ms.finished_good)],
     ["first_contract", fmtMs(s.firsts_ms.contract)],
     ["first_upgrade", fmtMs(s.firsts_ms.upgrade)],
     ["reach_level_2", fmtMs(s.firsts_ms.level2)],
-    ["contracts_basic", s.contracts_by_tier.basic],
-    ["contracts_intermediate", s.contracts_by_tier.intermediate],
-    ["contracts_advanced", s.contracts_by_tier.advanced],
-    ["contracts_emergency", s.contracts_by_tier.emergency],
-    ["contracts_total", s.contracts_total],
-    ["coins_earned", s.earned.coins],
-    ["xp_earned", s.earned.xp],
-    ["restoration_earned", s.earned.restoration],
-    ["contract_refreshes", s.contract_refreshes],
-    ["storage_full_count", s.storage_full_count],
-    ["machine_idle", fmtMs(s.machine_idle_ms)],
-    ["slot_active", fmtMs(s.slot_active_ms)],
+    ["coins_earned", s.economy.coins_earned],
+    ["milestone_coins", s.economy.milestone_coins],
+    ["coins_spent", s.economy.coins_spent],
+    ["net_coins", s.economy.net_coins],
+    ["xp_earned", s.economy.xp_earned],
+    ["restoration_earned", s.economy.restoration_earned],
+    ["scrap_collected", s.economy.scrap_collected],
+    ["components_produced", s.economy.components_produced],
+    ["finished_goods_produced", s.economy.finished_goods_produced],
+    ["contracts_total", s.contracts.total],
+    ["contracts_basic", s.contracts.by_tier.basic],
+    ["contracts_intermediate", s.contracts.by_tier.intermediate],
+    ["contracts_advanced", s.contracts.by_tier.advanced],
+    ["contracts_emergency", s.contracts.by_tier.emergency],
+    ["contract_refreshes", s.contracts.refreshes],
+    ["avg_coins_per_contract", s.contracts.avg_coins],
+    ["avg_xp_per_contract", s.contracts.avg_xp],
+    ["avg_restoration_per_contract", s.contracts.avg_restoration],
+    ["storage_full_count", s.production.storage_full_count],
+    ["machine_idle", fmtMs(s.production.machine_idle_ms)],
+    ["machine_active", fmtMs(s.production.machine_active_ms)],
+    ["slot_utilization_pct", s.production.slot_utilization_pct],
+    ["jobs_component", s.production.jobs_completed.component],
+    ["jobs_finished", s.production.jobs_completed.finished],
+    ["milestone_coins_received", s.milestones.milestone_coins_received],
+    ["current_reward_buff_pct", s.milestones.current_reward_buff_pct],
   ];
   for (const m of cfg.restoration_milestones) {
-    rows.push([`milestone_${m.points}`, fmtMs(s.milestone_times_ms[String(m.points)] ?? null)]);
+    rows.push([`milestone_${m.points}`, fmtMs(s.milestones.unlock_times_ms[String(m.points)] ?? null)]);
   }
-  return "metric,value\n" + rows.map(([k, v]) => `${k},${v}`).join("\n");
+  const header = `${csvCell("metric")},${csvCell("value")}`;
+  return header + "\n" + rows.map(([k, v]) => `${csvCell(k)},${csvCell(v)}`).join("\n");
 }
